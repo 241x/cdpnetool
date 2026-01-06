@@ -1,28 +1,47 @@
 package log
 
 import (
-	"log/slog"
+	"encoding/json"
+	"log"
 	"os"
+	"time"
 )
 
 type Logger interface {
-	Debug(msg string, args ...any)
-	Info(msg string, args ...any)
-	Warn(msg string, args ...any)
-	Error(msg string, args ...any)
+    Debug(msg string, args ...any)
+    Info(msg string, args ...any)
+    Warn(msg string, args ...any)
+    Error(msg string, args ...any)
 }
 
-type SLogger struct{ l *slog.Logger }
+type StdLogger struct{ l *log.Logger }
 
-func New(l *slog.Logger) Logger { return &SLogger{l: l} }
+func New(l *log.Logger) Logger { return &StdLogger{l: l} }
 
-func (s *SLogger) Debug(msg string, args ...any) { s.l.Debug(msg, args...) }
-func (s *SLogger) Info(msg string, args ...any)  { s.l.Info(msg, args...) }
-func (s *SLogger) Warn(msg string, args ...any)  { s.l.Warn(msg, args...) }
-func (s *SLogger) Error(msg string, args ...any) { s.l.Error(msg, args...) }
+func (s *StdLogger) Debug(msg string, args ...any) { s.write("DEBUG", msg, args...) }
+func (s *StdLogger) Info(msg string, args ...any)  { s.write("INFO", msg, args...) }
+func (s *StdLogger) Warn(msg string, args ...any)  { s.write("WARN", msg, args...) }
+func (s *StdLogger) Error(msg string, args ...any) { s.write("ERROR", msg, args...) }
 
-var defaultLogger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+func (s *StdLogger) write(level, msg string, args ...any) {
+    m := map[string]any{
+        "time":  time.Now().Local().Format("2006-01-02 15:04:05"),
+        "level": level,
+        "msg":   msg,
+    }
+    for i := 0; i+1 < len(args); i += 2 {
+        k := args[i]
+        v := args[i+1]
+        ks, ok := k.(string)
+        if !ok { ks = "arg" }
+        m[ks] = v
+    }
+    b, _ := json.Marshal(m)
+    s.l.Print(string(b))
+}
 
-func Set(l *slog.Logger) { defaultLogger = l }
+var defaultLogger = log.New(os.Stdout, "", 0)
 
-func L() *slog.Logger { return defaultLogger }
+func Set(l *log.Logger) { defaultLogger = l }
+
+func L() *log.Logger { return defaultLogger }

@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"log/slog"
+	"log"
 	"os"
 	"os/signal"
 	"time"
@@ -17,7 +17,7 @@ import (
 func main() {
 	devtools := os.Getenv("DEVTOOLS_URL")
 
-	l := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	l := log.New(os.Stdout, "", 0)
 
 	var err error
 	var br *browser.Browser

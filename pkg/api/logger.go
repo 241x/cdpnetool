@@ -1,9 +1,9 @@
 package api
 
 import (
-	"log/slog"
+	"log"
 
 	ilog "cdpnetool/internal/log"
 )
 
-func SetLogger(l *slog.Logger) { ilog.Set(l) }
+func SetLogger(l *log.Logger) { ilog.Set(l) }
