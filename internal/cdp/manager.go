@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	ilog "cdpnetool/internal/log"
+	logger "cdpnetool/internal/logger"
 	"cdpnetool/internal/rules"
 	"cdpnetool/pkg/model"
 
@@ -36,11 +36,11 @@ type Manager struct {
 	workers           int
 	bodySizeThreshold int64
 	processTimeoutMS  int
-	log               ilog.Logger
+	log               logger.Logger
 }
 
 // New 创建并返回一个管理器，用于管理CDP连接与拦截流程
-func New(devtoolsURL string, events chan model.Event, pending chan any, l ilog.Logger) *Manager {
+func New(devtoolsURL string, events chan model.Event, pending chan any, l logger.Logger) *Manager {
 	return &Manager{devtoolsURL: devtoolsURL, events: events, pending: pending, approvals: make(map[string]chan model.Rewrite), log: l}
 }
 

@@ -1,7 +1,7 @@
 package api
 
 import (
-	ilog "cdpnetool/internal/log"
+	logger "cdpnetool/internal/logger"
 	"cdpnetool/internal/service"
 	"cdpnetool/pkg/model"
 )
@@ -30,6 +30,4 @@ func NewService() Service {
 	return service.New()
 }
 
-func NewServiceWithLogger(l ilog.Logger) Service {
-	return service.NewWithLogger(l)
-}
+func NewServiceWithLogger(l logger.Logger) Service { return service.NewWithLogger(l) }

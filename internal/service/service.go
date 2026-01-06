@@ -4,7 +4,7 @@ import (
 	"sync"
 
 	"cdpnetool/internal/cdp"
-	ilog "cdpnetool/internal/log"
+	logger "cdpnetool/internal/logger"
 	"cdpnetool/pkg/errx"
 	"cdpnetool/pkg/model"
 )
@@ -12,7 +12,7 @@ import (
 type svc struct {
 	mu       sync.Mutex
 	sessions map[model.SessionID]*session
-	log      ilog.Logger
+	log      logger.Logger
 }
 
 type session struct {
@@ -25,9 +25,9 @@ type session struct {
 }
 
 // New 创建并返回服务层实例
-func New() *svc { return NewWithLogger(ilog.New(ilog.L())) }
+func New() *svc { return NewWithLogger(logger.NewDefaultLogger(logger.LogLevelInfo, nil)) }
 
-func NewWithLogger(l ilog.Logger) *svc {
+func NewWithLogger(l logger.Logger) *svc {
 	return &svc{sessions: make(map[model.SessionID]*session), log: l}
 }
 

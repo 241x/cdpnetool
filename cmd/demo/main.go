@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"cdpnetool/internal/browser"
-	ilog "cdpnetool/internal/log"
+	logger "cdpnetool/internal/logger"
 	api "cdpnetool/pkg/api"
 	"cdpnetool/pkg/model"
 )
@@ -17,7 +17,7 @@ import (
 func main() {
 	devtools := os.Getenv("DEVTOOLS_URL")
 
-	l := log.New(os.Stdout, "", 0)
+	_ = log.New(os.Stdout, "", 0)
 
 	var err error
 	var br *browser.Browser
@@ -30,7 +30,7 @@ func main() {
 		devtools = br.DevToolsURL
 	}
 
-	svc := api.NewServiceWithLogger(ilog.New(l))
+	svc := api.NewServiceWithLogger(logger.NewDefaultLogger(logger.LogLevelInfo, os.Stdout))
 	cfg := model.SessionConfig{
 		DevToolsURL:       devtools,
 		Concurrency:       4,
