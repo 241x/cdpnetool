@@ -2,6 +2,41 @@ package rulespec
 
 import "cdpnetool/pkg/model"
 
+type ConditionType string
+type ConditionMode string
+type ConditionOp string
+
+const (
+	ConditionTypeURL         ConditionType = "url"
+	ConditionTypeMethod      ConditionType = "method"
+	ConditionTypeHeader      ConditionType = "header"
+	ConditionTypeQuery       ConditionType = "query"
+	ConditionTypeCookie      ConditionType = "cookie"
+	ConditionTypeText        ConditionType = "text"
+	ConditionTypeMIME        ConditionType = "mime"
+	ConditionTypeSize        ConditionType = "size"
+	ConditionTypeProbability ConditionType = "probability"
+	ConditionTypeTimeWindow  ConditionType = "time_window"
+	ConditionTypeJSONPointer ConditionType = "json_pointer"
+)
+
+const (
+	ConditionModePrefix ConditionMode = "prefix"
+	ConditionModeRegex  ConditionMode = "regex"
+	ConditionModeExact  ConditionMode = "exact"
+)
+
+const (
+	ConditionOpEquals   ConditionOp = "equals"
+	ConditionOpContains ConditionOp = "contains"
+	ConditionOpRegex    ConditionOp = "regex"
+	ConditionOpLT       ConditionOp = "lt"
+	ConditionOpLTE      ConditionOp = "lte"
+	ConditionOpGT       ConditionOp = "gt"
+	ConditionOpGTE      ConditionOp = "gte"
+	ConditionOpBetween  ConditionOp = "between"
+)
+
 type RuleSet struct {
 	Version string `json:"version"`
 	Rules   []Rule `json:"rules"`
@@ -22,14 +57,14 @@ type Match struct {
 }
 
 type Condition struct {
-	Type    string   `json:"type"`
-	Mode    string   `json:"mode"`
-	Pattern string   `json:"pattern"`
-	Values  []string `json:"values"`
-	Key     string   `json:"key"`
-	Op      string   `json:"op"`
-	Value   string   `json:"value"`
-	Pointer string   `json:"pointer"`
+	Type    ConditionType `json:"type"`
+	Mode    ConditionMode `json:"mode"`
+	Pattern string        `json:"pattern"`
+	Values  []string      `json:"values"`
+	Key     string        `json:"key"`
+	Op      ConditionOp   `json:"op"`
+	Value   string        `json:"value"`
+	Pointer string        `json:"pointer"`
 }
 
 type Action struct {
@@ -42,12 +77,12 @@ type Action struct {
 }
 
 type Rewrite struct {
-	URL     *string             `json:"url"`
-	Method  *string             `json:"method"`
-	Headers map[string]*string  `json:"headers"`
-	Query   map[string]*string  `json:"query"`
-	Cookies map[string]*string  `json:"cookies"`
-	Body    *BodyPatch          `json:"body"`
+	URL     *string            `json:"url"`
+	Method  *string            `json:"method"`
+	Headers map[string]*string `json:"headers"`
+	Query   map[string]*string `json:"query"`
+	Cookies map[string]*string `json:"cookies"`
+	Body    *BodyPatch         `json:"body"`
 }
 
 type BodyPatch struct {
@@ -75,4 +110,3 @@ type Pause struct {
 		Reason string `json:"reason"`
 	} `json:"defaultAction"`
 }
-

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"time"
@@ -17,8 +16,6 @@ import (
 
 func main() {
 	devtools := os.Getenv("DEVTOOLS_URL")
-
-	_ = log.New(os.Stdout, "", 0)
 
 	var err error
 	var br *browser.Browser

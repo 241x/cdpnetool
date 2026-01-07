@@ -124,95 +124,95 @@ func noneOf(ctx Ctx, cs []rulespec.Condition) bool { return !anyOf(ctx, cs) }
 // cond 评估单个条件是否命中
 func cond(ctx Ctx, c rulespec.Condition) bool {
 	switch c.Type {
-	case "url":
+	case rulespec.ConditionTypeURL:
 		switch c.Mode {
-		case "prefix":
+		case rulespec.ConditionModePrefix:
 			return strings.HasPrefix(ctx.URL, c.Pattern)
-		case "regex":
+		case rulespec.ConditionModeRegex:
 			return matchRegex(ctx.URL, c.Pattern)
-		case "exact":
+		case rulespec.ConditionModeExact:
 			return ctx.URL == c.Pattern
 		default:
 			return glob(ctx.URL, c.Pattern)
 		}
-	case "method":
+	case rulespec.ConditionTypeMethod:
 		for _, v := range c.Values {
 			if strings.EqualFold(ctx.Method, v) {
 				return true
 			}
 		}
 		return false
-	case "header":
+	case rulespec.ConditionTypeHeader:
 		v, ok := ctx.Headers[c.Key]
 		if !ok {
 			return false
 		}
 		switch c.Op {
-		case "equals":
+		case rulespec.ConditionOpEquals:
 			return v == c.Value
-		case "contains":
+		case rulespec.ConditionOpContains:
 			return strings.Contains(v, c.Value)
-		case "regex":
+		case rulespec.ConditionOpRegex:
 			return matchRegex(v, c.Value)
 		default:
 			return true
 		}
-	case "query":
+	case rulespec.ConditionTypeQuery:
 		v, ok := ctx.Query[c.Key]
 		if !ok {
 			return false
 		}
 		switch c.Op {
-		case "equals":
+		case rulespec.ConditionOpEquals:
 			return v == c.Value
-		case "contains":
+		case rulespec.ConditionOpContains:
 			return strings.Contains(v, c.Value)
-		case "regex":
+		case rulespec.ConditionOpRegex:
 			return matchRegex(v, c.Value)
 		default:
 			return true
 		}
-	case "cookie":
+	case rulespec.ConditionTypeCookie:
 		v, ok := ctx.Cookies[c.Key]
 		if !ok {
 			return false
 		}
 		switch c.Op {
-		case "equals":
+		case rulespec.ConditionOpEquals:
 			return v == c.Value
-		case "contains":
+		case rulespec.ConditionOpContains:
 			return strings.Contains(v, c.Value)
-		case "regex":
+		case rulespec.ConditionOpRegex:
 			return matchRegex(v, c.Value)
 		default:
 			return true
 		}
-	case "text":
+	case rulespec.ConditionTypeText:
 		if ctx.Body == "" {
 			return false
 		}
 		switch c.Op {
-		case "equals":
+		case rulespec.ConditionOpEquals:
 			return ctx.Body == c.Value
-		case "contains":
+		case rulespec.ConditionOpContains:
 			return strings.Contains(ctx.Body, c.Value)
-		case "regex":
+		case rulespec.ConditionOpRegex:
 			return matchRegex(ctx.Body, c.Value)
 		default:
 			return true
 		}
-	case "mime":
+	case rulespec.ConditionTypeMIME:
 		s := strings.ToLower(ctx.ContentType)
 		p := strings.ToLower(c.Pattern)
 		switch c.Mode {
-		case "exact":
+		case rulespec.ConditionModeExact:
 			return s == p
-		case "prefix":
+		case rulespec.ConditionModePrefix:
 			return strings.HasPrefix(s, p)
 		default:
 			return strings.HasPrefix(s, p)
 		}
-	case "size":
+	case rulespec.ConditionTypeSize:
 		var n int64
 		if ctx.Body != "" {
 			n = int64(len(ctx.Body))
@@ -228,37 +228,37 @@ func cond(ctx Ctx, c rulespec.Condition) bool {
 			}
 		}
 		switch c.Op {
-		case "lt":
+		case rulespec.ConditionOpLT:
 			x, err := parseInt64(c.Value)
 			if err != nil {
 				return false
 			}
 			return n < x
-		case "lte":
+		case rulespec.ConditionOpLTE:
 			x, err := parseInt64(c.Value)
 			if err != nil {
 				return false
 			}
 			return n <= x
-		case "gt":
+		case rulespec.ConditionOpGT:
 			x, err := parseInt64(c.Value)
 			if err != nil {
 				return false
 			}
 			return n > x
-		case "gte":
+		case rulespec.ConditionOpGTE:
 			x, err := parseInt64(c.Value)
 			if err != nil {
 				return false
 			}
 			return n >= x
-		case "equals":
+		case rulespec.ConditionOpEquals:
 			x, err := parseInt64(c.Value)
 			if err != nil {
 				return false
 			}
 			return n == x
-		case "between":
+		case rulespec.ConditionOpBetween:
 			parts := strings.SplitN(c.Value, ":", 2)
 			if len(parts) != 2 {
 				return false
@@ -275,7 +275,7 @@ func cond(ctx Ctx, c rulespec.Condition) bool {
 		default:
 			return true
 		}
-	case "probability":
+	case rulespec.ConditionTypeProbability:
 		p := 0.0
 		if c.Value != "" {
 			if f, err := strconv.ParseFloat(c.Value, 64); err == nil {
@@ -289,7 +289,7 @@ func cond(ctx Ctx, c rulespec.Condition) bool {
 			}
 		}
 		return rand.Float64() < p
-	case "time_window":
+	case rulespec.ConditionTypeTimeWindow:
 		// Value 格式: "HH:MM-HH:MM"
 		parts := strings.SplitN(c.Value, "-", 2)
 		if len(parts) != 2 {
@@ -324,7 +324,7 @@ func cond(ctx Ctx, c rulespec.Condition) bool {
 		}
 		// 跨午夜窗口
 		return cur >= a || cur <= b
-	case "json_pointer":
+	case rulespec.ConditionTypeJSONPointer:
 		if ctx.Body == "" {
 			return false
 		}
@@ -334,11 +334,11 @@ func cond(ctx Ctx, c rulespec.Condition) bool {
 		}
 		s := val
 		switch c.Op {
-		case "equals":
+		case rulespec.ConditionOpEquals:
 			return s == c.Value
-		case "contains":
+		case rulespec.ConditionOpContains:
 			return strings.Contains(s, c.Value)
-		case "regex":
+		case rulespec.ConditionOpRegex:
 			return matchRegex(s, c.Value)
 		default:
 			return true
