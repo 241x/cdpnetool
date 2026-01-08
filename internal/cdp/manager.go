@@ -49,6 +49,9 @@ type Manager struct {
 
 // New 创建并返回一个管理器，用于管理CDP连接与拦截流程
 func New(devtoolsURL string, events chan model.Event, pending chan any, l logger.Logger) *Manager {
+	if l == nil {
+		l = logger.NewNoopLogger()
+	}
 	return &Manager{
 		devtoolsURL:  devtoolsURL,
 		events:       events,
@@ -63,9 +66,7 @@ func New(devtoolsURL string, events chan model.Event, pending chan any, l logger
 func (m *Manager) AttachTarget(target model.TargetID) error {
 	m.attachMu.Lock()
 	defer m.attachMu.Unlock()
-	if m.log != nil {
-		m.log.Info("attach_target_begin", "devtools", m.devtoolsURL, "target", string(target))
-	}
+	m.log.Info("开始附加浏览器目标", "devtools", m.devtoolsURL, "target", string(target))
 	if target != "" {
 		m.fixedTarget = target
 	} else {
@@ -83,9 +84,7 @@ func (m *Manager) AttachTarget(target model.TargetID) error {
 	dt := devtool.New(m.devtoolsURL)
 	targets, err := dt.List(ctx)
 	if err != nil {
-		if m.log != nil {
-			m.log.Error("attach_target_list_error", "error", err)
-		}
+		m.log.Error("获取浏览器目标列表失败", "error", err)
 		return err
 	}
 	var sel *devtool.Target
@@ -113,24 +112,18 @@ func (m *Manager) AttachTarget(target model.TargetID) error {
 		}
 	}
 	if sel == nil {
-		if m.log != nil {
-			m.log.Error("attach_target_none")
-		}
+		m.log.Error("未找到可附加的浏览器目标")
 		return fmt.Errorf("no target")
 	}
 	conn, err := rpcc.DialContext(ctx, sel.WebSocketDebuggerURL)
 	if err != nil {
-		if m.log != nil {
-			m.log.Error("attach_target_dial_error", "error", err)
-		}
+		m.log.Error("连接浏览器 DevTools 失败", "error", err)
 		return err
 	}
 	m.conn = conn
 	m.client = cdp.NewClient(conn)
 	m.currentTarget = model.TargetID(sel.ID)
-	if m.log != nil {
-		m.log.Info("attach_target_success")
-	}
+	m.log.Info("附加浏览器目标成功")
 	if target == "" {
 		m.startWorkspaceWatcher()
 	} else {
@@ -158,9 +151,7 @@ func (m *Manager) Enable() error {
 	if m.client == nil {
 		return fmt.Errorf("not attached")
 	}
-	if m.log != nil {
-		m.log.Info("enable_begin")
-	}
+	m.log.Info("开始启用拦截功能")
 	err := m.client.Network.Enable(m.ctx, nil)
 	if err != nil {
 		return err
@@ -175,9 +166,7 @@ func (m *Manager) Enable() error {
 		return err
 	}
 	go m.consume()
-	if m.log != nil {
-		m.log.Info("enable_done", "workers", m.workers)
-	}
+	m.log.Info("拦截功能启用完成", "workers", m.workers)
 	return nil
 }
 
@@ -193,9 +182,7 @@ func (m *Manager) Disable() error {
 func (m *Manager) consume() {
 	rp, err := m.client.Fetch.RequestPaused(m.ctx)
 	if err != nil {
-		if m.log != nil {
-			m.log.Error("consume_subscribe_error", "error", err)
-		}
+		m.log.Error("订阅拦截事件流失败", "error", err)
 		m.handleStreamError(err)
 		return
 	}
@@ -204,15 +191,11 @@ func (m *Manager) consume() {
 	if m.workers > 0 {
 		sem = make(chan struct{}, m.workers)
 	}
-	if m.log != nil {
-		m.log.Info("consume_start")
-	}
+	m.log.Info("开始消费拦截事件流")
 	for {
 		ev, err := rp.Recv()
 		if err != nil {
-			if m.log != nil {
-				m.log.Error("consume_recv_error", "error", err)
-			}
+			m.log.Error("接收拦截事件失败", "error", err)
 			m.handleStreamError(err)
 			return
 		}
@@ -235,22 +218,16 @@ func (m *Manager) handleStreamError(err error) {
 	if m.ctx.Err() != nil {
 		return
 	}
-	if m.log != nil {
-		m.log.Warn("stream_error_reconnect", "error", err)
-	}
+	m.log.Warn("拦截流被中断，尝试自动重连", "error", err)
 	if m.fixedTarget == "" {
 		return
 	}
 	if err := m.AttachTarget(m.fixedTarget); err != nil {
-		if m.log != nil {
-			m.log.Error("reconnect_attach_error", "error", err)
-		}
+		m.log.Error("重连附加浏览器目标失败", "error", err)
 		return
 	}
 	if err := m.Enable(); err != nil {
-		if m.log != nil {
-			m.log.Error("reconnect_enable_error", "error", err)
-		}
+		m.log.Error("重连启用拦截失败", "error", err)
 	}
 }
 
@@ -295,9 +272,7 @@ func (m *Manager) checkWorkspace() {
 	dt := devtool.New(m.devtoolsURL)
 	targets, err := dt.List(ctx)
 	if err != nil {
-		if m.log != nil {
-			m.log.Debug("workspace_list_error", "error", err)
-		}
+		m.log.Debug("工作区轮询获取目标列表失败", "error", err)
 		return
 	}
 	var candidate model.TargetID
@@ -331,9 +306,7 @@ func (m *Manager) checkWorkspace() {
 		return
 	}
 	if err := m.attachAndEnable(candidate); err != nil {
-		if m.log != nil {
-			m.log.Error("workspace_switch_error", "error", err)
-		}
+		m.log.Error("自动切换浏览器目标失败", "error", err)
 	}
 }
 
@@ -361,9 +334,7 @@ func (m *Manager) handle(ev *fetch.RequestPausedReply) {
 	if ev.ResponseStatusCode != nil {
 		stg = "response"
 	}
-	if m.log != nil {
-		m.log.Debug("handle_start", "stage", stg, "url", ev.Request.URL, "method", ev.Request.Method)
-	}
+	m.log.Debug("开始处理拦截事件", "stage", stg, "url", ev.Request.URL, "method", ev.Request.Method)
 	res := m.decide(ev, stg)
 	if res == nil || res.Action == nil {
 		m.applyContinue(ctx, ev, stg)
@@ -374,9 +345,7 @@ func (m *Manager) handle(ev *fetch.RequestPausedReply) {
 		if rand.Float64() < a.DropRate {
 			m.applyContinue(ctx, ev, stg)
 			m.events <- model.Event{Type: "degraded"}
-			if m.log != nil {
-				m.log.Warn("drop_rate_triggered", "stage", stg)
-			}
+			m.log.Warn("触发丢弃概率降级", "stage", stg)
 			return
 		}
 	}
@@ -386,15 +355,11 @@ func (m *Manager) handle(ev *fetch.RequestPausedReply) {
 	if time.Since(start) > time.Duration(to)*time.Millisecond {
 		m.applyContinue(ctx, ev, stg)
 		m.events <- model.Event{Type: "degraded"}
-		if m.log != nil {
-			m.log.Warn("process_timeout", "stage", stg)
-		}
+		m.log.Warn("拦截处理超时自动降级", "stage", stg)
 		return
 	}
 	if a.Pause != nil {
-		if m.log != nil {
-			m.log.Info("apply_pause", "stage", stg)
-		}
+		m.log.Info("应用暂停审批动作", "stage", stg)
 		m.applyPause(ctx, ev, a.Pause, stg)
 		return
 	}
@@ -407,17 +372,13 @@ func (m *Manager) handle(ev *fetch.RequestPausedReply) {
 		return
 	}
 	if a.Respond != nil {
-		if m.log != nil {
-			m.log.Info("apply_respond", "stage", stg)
-		}
+		m.log.Info("应用自定义响应动作", "stage", stg)
 		m.applyRespond(ctx, ev, a.Respond, stg)
 		m.events <- model.Event{Type: "fulfilled", Rule: res.RuleID}
 		return
 	}
 	if a.Rewrite != nil {
-		if m.log != nil {
-			m.log.Info("apply_rewrite", "stage", stg)
-		}
+		m.log.Info("应用请求响应重写动作", "stage", stg)
 		m.applyRewrite(ctx, ev, a.Rewrite, stg)
 		m.events <- model.Event{Type: "mutated", Rule: res.RuleID}
 		return
@@ -588,14 +549,10 @@ func parseInt64(s string) (int64, error) {
 func (m *Manager) applyContinue(ctx context.Context, ev *fetch.RequestPausedReply, stage string) {
 	if stage == "response" {
 		m.client.Fetch.ContinueResponse(ctx, &fetch.ContinueResponseArgs{RequestID: ev.RequestID})
-		if m.log != nil {
-			m.log.Debug("continue_response")
-		}
+		m.log.Debug("继续原始响应")
 	} else {
 		m.client.Fetch.ContinueRequest(ctx, &fetch.ContinueRequestArgs{RequestID: ev.RequestID})
-		if m.log != nil {
-			m.log.Debug("continue_request")
-		}
+		m.log.Debug("继续原始请求")
 	}
 }
 

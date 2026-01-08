@@ -31,6 +31,9 @@ type session struct {
 func New() *svc { return NewWithLogger(logger.NewDefaultLogger(logger.LogLevelInfo, nil)) }
 
 func NewWithLogger(l logger.Logger) *svc {
+	if l == nil {
+		l = logger.NewNoopLogger()
+	}
 	return &svc{sessions: make(map[model.SessionID]*session), log: l}
 }
 
@@ -49,9 +52,7 @@ func (s *svc) StartSession(cfg model.SessionConfig) (model.SessionID, error) {
 	ses.mgr.SetConcurrency(cfg.Concurrency)
 	ses.mgr.SetRuntime(cfg.BodySizeThreshold, cfg.ProcessTimeoutMS)
 	s.sessions[id] = ses
-	if s.log != nil {
-		s.log.Info("start_session", "session", string(id), "devtools", cfg.DevToolsURL, "concurrency", cfg.Concurrency, "pending", cfg.PendingCapacity)
-	}
+	s.log.Info("创建会话成功", "session", string(id), "devtools", cfg.DevToolsURL, "concurrency", cfg.Concurrency, "pending", cfg.PendingCapacity)
 	return id, nil
 }
 
@@ -72,9 +73,7 @@ func (s *svc) StopSession(id model.SessionID) error {
 	}
 	close(ses.events)
 	close(ses.pending)
-	if s.log != nil {
-		s.log.Info("stop_session", "session", string(id))
-	}
+	s.log.Info("会话已停止", "session", string(id))
 	return nil
 }
 
@@ -93,13 +92,9 @@ func (s *svc) AttachTarget(id model.SessionID, target model.TargetID) error {
 	}
 	err := ses.mgr.AttachTarget(target)
 	if err == nil {
-		if s.log != nil {
-			s.log.Info("attach_target", "session", string(id), "target", string(target))
-		}
+		s.log.Info("附加浏览器目标成功", "session", string(id), "target", string(target))
 	} else {
-		if s.log != nil {
-			s.log.Error("attach_target_error", "session", string(id), "error", err)
-		}
+		s.log.Error("附加浏览器目标失败", "session", string(id), "error", err)
 	}
 	return err
 }
@@ -131,13 +126,9 @@ func (s *svc) EnableInterception(id model.SessionID) error {
 	}
 	err := ses.mgr.Enable()
 	if err == nil {
-		if s.log != nil {
-			s.log.Info("enable_interception", "session", string(id))
-		}
+		s.log.Info("启用会话拦截成功", "session", string(id))
 	} else {
-		if s.log != nil {
-			s.log.Error("enable_interception_error", "session", string(id), "error", err)
-		}
+		s.log.Error("启用会话拦截失败", "session", string(id), "error", err)
 	}
 	return err
 }
@@ -155,13 +146,9 @@ func (s *svc) DisableInterception(id model.SessionID) error {
 	}
 	err := ses.mgr.Disable()
 	if err == nil {
-		if s.log != nil {
-			s.log.Info("disable_interception", "session", string(id))
-		}
+		s.log.Info("停用会话拦截成功", "session", string(id))
 	} else {
-		if s.log != nil {
-			s.log.Error("disable_interception_error", "session", string(id), "error", err)
-		}
+		s.log.Error("停用会话拦截失败", "session", string(id), "error", err)
 	}
 	return err
 }
@@ -175,9 +162,7 @@ func (s *svc) LoadRules(id model.SessionID, rs rulespec.RuleSet) error {
 		return errors.New("cdpnetool: session not found")
 	}
 	ses.rules = rs
-	if s.log != nil {
-		s.log.Info("load_rules", "session", string(id), "count", len(rs.Rules), "version", rs.Version)
-	}
+	s.log.Info("加载规则集完成", "session", string(id), "count", len(rs.Rules), "version", rs.Version)
 	if ses.mgr != nil {
 		ses.mgr.UpdateRules(rs)
 	}

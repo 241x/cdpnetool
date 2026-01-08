@@ -124,13 +124,14 @@ func (l *DefaultLogger) log(level LogLevel, message string, args ...any) {
 	}
 
 	// 添加键值对
+	var others string
 	for i := 0; i < len(args); i += 2 {
 		key := fmt.Sprintf("%v", args[i])
 		value := args[i+1]
-		message += fmt.Sprintf(" %s=%v", key, value)
+		others += fmt.Sprintf(" %s=%v", key, value)
 	}
 
-	l.logger.Printf("[%s] [%s] %s", timestamp, level.String(), message)
+	l.logger.Printf("[%s] [%s] `%s` %s", timestamp, level.String(), message, others)
 }
 
 // NoopLogger 空日志实现,不输出任何日志
