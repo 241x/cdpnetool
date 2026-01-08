@@ -97,14 +97,9 @@ func (m *Manager) AttachTarget(target model.TargetID) error {
 		}
 	} else {
 		for i := len(targets) - 1; i >= 0; i-- {
-			if targets[i].Type == "page" {
-				if targets[i].URL != "" && !strings.HasPrefix(strings.ToLower(targets[i].URL), "chrome://") {
-					sel = targets[i]
-					break
-				}
-				if sel == nil {
-					sel = targets[i]
-				}
+			if targets[i].Type == "page" && isUserPageURL(targets[i].URL) {
+				sel = targets[i]
+				break
 			}
 		}
 		if sel == nil && len(targets) > 0 {
@@ -278,6 +273,9 @@ func (m *Manager) checkWorkspace() {
 	var candidate model.TargetID
 	for i := len(targets) - 1; i >= 0; i-- {
 		if targets[i].Type != "page" {
+			continue
+		}
+		if !isUserPageURL(targets[i].URL) {
 			continue
 		}
 		id := model.TargetID(targets[i].ID)
@@ -982,6 +980,17 @@ func toHeaderEntries(h map[string]string) []fetch.HeaderEntry {
 		out = append(out, fetch.HeaderEntry{Name: k, Value: v})
 	}
 	return out
+}
+
+func isUserPageURL(raw string) bool {
+	if raw == "" {
+		return false
+	}
+	url := strings.ToLower(raw)
+	if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
+		return true
+	}
+	return false
 }
 
 // applyPause 进入人工审批流程并按超时默认动作处理

@@ -131,7 +131,7 @@ func (l *DefaultLogger) log(level LogLevel, message string, args ...any) {
 		others += fmt.Sprintf(" %s=%v", key, value)
 	}
 
-	l.logger.Printf("[%s] [%s] `%s` %s", timestamp, level.String(), message, others)
+	l.logger.Printf("[%s] [%s] \"%s\" %s", timestamp, level.String(), message, others)
 }
 
 // NoopLogger 空日志实现,不输出任何日志
