@@ -8,21 +8,59 @@ export function ApproveResponse(arg1:string,arg2:string):Promise<gui.OperationRe
 
 export function AttachTarget(arg1:string,arg2:string):Promise<gui.OperationResult>;
 
+export function CleanupEventHistory(arg1:number):Promise<gui.OperationResult>;
+
+export function CloseBrowser():Promise<gui.OperationResult>;
+
+export function DeleteRuleSet(arg1:number):Promise<gui.OperationResult>;
+
 export function DetachTarget(arg1:string,arg2:string):Promise<gui.OperationResult>;
 
 export function DisableInterception(arg1:string):Promise<gui.OperationResult>;
 
+export function DuplicateRuleSet(arg1:number,arg2:string):Promise<gui.RuleSetResult>;
+
 export function EnableInterception(arg1:string):Promise<gui.OperationResult>;
+
+export function GetActiveRuleSet():Promise<gui.RuleSetResult>;
+
+export function GetAllSettings():Promise<gui.SettingsResult>;
+
+export function GetBrowserStatus():Promise<gui.LaunchBrowserResult>;
 
 export function GetCurrentSession():Promise<string>;
 
+export function GetEventStats():Promise<any>;
+
+export function GetRuleSet(arg1:number):Promise<gui.RuleSetResult>;
+
 export function GetRuleStats(arg1:string):Promise<gui.StatsResult>;
+
+export function GetSetting(arg1:string):Promise<string>;
+
+export function LaunchBrowser(arg1:boolean):Promise<gui.LaunchBrowserResult>;
+
+export function ListRuleSets():Promise<gui.RuleSetListResult>;
 
 export function ListTargets(arg1:string):Promise<gui.TargetListResult>;
 
+export function LoadActiveRuleSetToSession():Promise<gui.OperationResult>;
+
 export function LoadRules(arg1:string,arg2:string):Promise<gui.OperationResult>;
 
+export function QueryEventHistory(arg1:string,arg2:string,arg3:string,arg4:string,arg5:number,arg6:number,arg7:number,arg8:number):Promise<gui.EventHistoryResult>;
+
 export function Reject(arg1:string):Promise<gui.OperationResult>;
+
+export function RenameRuleSet(arg1:number,arg2:string):Promise<gui.OperationResult>;
+
+export function SaveRuleSet(arg1:number,arg2:string,arg3:string):Promise<gui.RuleSetResult>;
+
+export function SetActiveRuleSet(arg1:number):Promise<gui.OperationResult>;
+
+export function SetMultipleSettings(arg1:string):Promise<gui.OperationResult>;
+
+export function SetSetting(arg1:string,arg2:string):Promise<gui.OperationResult>;
 
 export function StartSession(arg1:string):Promise<gui.SessionResult>;
 

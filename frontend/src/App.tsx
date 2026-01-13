@@ -3,6 +3,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Toaster } from '@/components/ui/toaster'
+import { useToast } from '@/hooks/use-toast'
 import { useSessionStore, useThemeStore } from '@/stores'
 import { RuleListEditor } from '@/components/rules'
 import { PendingPanel } from '@/components/pending'
@@ -25,7 +27,8 @@ import {
   Plus,
   Download,
   Upload,
-  Save
+  Save,
+  Chrome
 } from 'lucide-react'
 
 // Wails 生成的绑定（需要在 wails dev 后生成）
@@ -46,6 +49,9 @@ declare global {
           ApproveRequest: (itemId: string, mutationsJson: string) => Promise<{ success: boolean; error?: string }>
           ApproveResponse: (itemId: string, mutationsJson: string) => Promise<{ success: boolean; error?: string }>
           Reject: (itemId: string) => Promise<{ success: boolean; error?: string }>
+          LaunchBrowser: (headless: boolean) => Promise<{ devToolsUrl: string; success: boolean; error?: string }>
+          CloseBrowser: () => Promise<{ success: boolean; error?: string }>
+          GetBrowserStatus: () => Promise<{ devToolsUrl: string; success: boolean; error?: string }>
         }
       }
     }
@@ -72,21 +78,69 @@ function App() {
   } = useSessionStore()
   
   const { isDark, toggle: toggleTheme } = useThemeStore()
+  const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
+  const [isLaunchingBrowser, setIsLaunchingBrowser] = useState(false)
   const [pendingItems, setPendingItems] = useState<PendingItem[]>([])
+
+  // 启动浏览器
+  const handleLaunchBrowser = async () => {
+    setIsLaunchingBrowser(true)
+    try {
+      const result = await window.go?.gui?.App?.LaunchBrowser(false)
+      if (result?.success) {
+        setDevToolsURL(result.devToolsUrl)
+        toast({
+          variant: 'success',
+          title: '浏览器已启动',
+          description: `DevTools URL: ${result.devToolsUrl}`,
+        })
+      } else {
+        toast({
+          variant: 'destructive',
+          title: '启动失败',
+          description: result?.error || '无法启动浏览器',
+        })
+      }
+    } catch (e) {
+      toast({
+        variant: 'destructive',
+        title: '启动错误',
+        description: String(e),
+      })
+    } finally {
+      setIsLaunchingBrowser(false)
+    }
+  }
 
   // 连接/断开会话
   const handleConnect = async () => {
     if (isConnected && currentSessionId) {
       // 断开
       try {
-        await window.go?.gui?.App?.StopSession(currentSessionId)
-        setConnected(false)
-        setCurrentSession(null)
-        setIntercepting(false)
-        setTargets([])
+        const result = await window.go?.gui?.App?.StopSession(currentSessionId)
+        if (result?.success) {
+          setConnected(false)
+          setCurrentSession(null)
+          setIntercepting(false)
+          setTargets([])
+          toast({
+            variant: 'success',
+            title: '已断开连接',
+          })
+        } else {
+          toast({
+            variant: 'destructive',
+            title: '断开失败',
+            description: result?.error,
+          })
+        }
       } catch (e) {
-        console.error('Stop session failed:', e)
+        toast({
+          variant: 'destructive',
+          title: '断开错误',
+          description: String(e),
+        })
       }
     } else {
       // 连接
@@ -96,13 +150,26 @@ function App() {
         if (result?.success) {
           setCurrentSession(result.sessionId)
           setConnected(true)
+          toast({
+            variant: 'success',
+            title: '连接成功',
+            description: `会话 ID: ${result.sessionId.slice(0, 8)}...`,
+          })
           // 自动获取目标列表
           await refreshTargets(result.sessionId)
         } else {
-          console.error('Start session failed:', result?.error)
+          toast({
+            variant: 'destructive',
+            title: '连接失败',
+            description: result?.error,
+          })
         }
       } catch (e) {
-        console.error('Start session error:', e)
+        toast({
+          variant: 'destructive',
+          title: '连接错误',
+          description: String(e),
+        })
       } finally {
         setIsLoading(false)
       }
@@ -133,15 +200,39 @@ function App() {
         const result = await window.go?.gui?.App?.DisableInterception(currentSessionId)
         if (result?.success) {
           setIntercepting(false)
+          toast({
+            variant: 'success',
+            title: '拦截已停止',
+          })
+        } else {
+          toast({
+            variant: 'destructive',
+            title: '停止失败',
+            description: result?.error,
+          })
         }
       } else {
         const result = await window.go?.gui?.App?.EnableInterception(currentSessionId)
         if (result?.success) {
           setIntercepting(true)
+          toast({
+            variant: 'success',
+            title: '拦截已启用',
+          })
+        } else {
+          toast({
+            variant: 'destructive',
+            title: '启用失败',
+            description: result?.error,
+          })
         }
       }
     } catch (e) {
-      console.error('Toggle interception error:', e)
+      toast({
+        variant: 'destructive',
+        title: '操作错误',
+        description: String(e),
+      })
     }
   }
 
@@ -155,15 +246,39 @@ function App() {
         const result = await window.go?.gui?.App?.DetachTarget(currentSessionId, targetId)
         if (result?.success) {
           toggleAttachedTarget(targetId)
+          toast({
+            variant: 'success',
+            title: '已移除目标',
+          })
+        } else {
+          toast({
+            variant: 'destructive',
+            title: '移除失败',
+            description: result?.error,
+          })
         }
       } else {
         const result = await window.go?.gui?.App?.AttachTarget(currentSessionId, targetId)
         if (result?.success) {
           toggleAttachedTarget(targetId)
+          toast({
+            variant: 'success',
+            title: '已附加目标',
+          })
+        } else {
+          toast({
+            variant: 'destructive',
+            title: '附加失败',
+            description: result?.error,
+          })
         }
       }
     } catch (e) {
-      console.error('Toggle target error:', e)
+      toast({
+        variant: 'destructive',
+        title: '操作错误',
+        description: String(e),
+      })
     }
   }
 
@@ -197,11 +312,23 @@ function App() {
       
       if (result?.success) {
         setPendingItems(prev => prev.filter(item => item.id !== itemId))
+        toast({
+          variant: 'success',
+          title: '已通过',
+        })
       } else {
-        console.error('Approve failed:', result?.error)
+        toast({
+          variant: 'destructive',
+          title: '审批失败',
+          description: result?.error,
+        })
       }
     } catch (e) {
-      console.error('Approve error:', e)
+      toast({
+        variant: 'destructive',
+        title: '审批错误',
+        description: String(e),
+      })
     }
   }
 
@@ -211,11 +338,23 @@ function App() {
       const result = await window.go?.gui?.App?.Reject(itemId)
       if (result?.success) {
         setPendingItems(prev => prev.filter(item => item.id !== itemId))
+        toast({
+          variant: 'success',
+          title: '已拒绝',
+        })
       } else {
-        console.error('Reject failed:', result?.error)
+        toast({
+          variant: 'destructive',
+          title: '拒绝失败',
+          description: result?.error,
+        })
       }
     } catch (e) {
-      console.error('Reject error:', e)
+      toast({
+        variant: 'destructive',
+        title: '拒绝错误',
+        description: String(e),
+      })
     }
   }
 
@@ -224,6 +363,15 @@ function App() {
       {/* 顶部工具栏 */}
       <div className="h-14 border-b flex items-center px-4 gap-4 shrink-0">
         <div className="flex items-center gap-2 flex-1">
+          <Button
+            onClick={handleLaunchBrowser}
+            variant="outline"
+            disabled={isLaunchingBrowser || isConnected}
+            title="启动新浏览器实例"
+          >
+            <Chrome className="w-4 h-4 mr-2" />
+            {isLaunchingBrowser ? '启动中...' : '启动浏览器'}
+          </Button>
           <Input
             value={devToolsURL}
             onChange={(e) => setDevToolsURL(e.target.value)}
@@ -366,6 +514,9 @@ function App() {
         <span className="mx-2">|</span>
         <span>Session: {currentSessionId?.slice(0, 8) || '-'}</span>
       </div>
+      
+      {/* Toast 通知 */}
+      <Toaster />
     </div>
   )
 }
