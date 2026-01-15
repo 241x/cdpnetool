@@ -28,8 +28,25 @@ import {
   Download,
   Upload,
   Save,
-  Chrome
+  Chrome,
+  FolderOpen,
+  Trash2,
+  Copy,
+  Edit3,
+  Check,
+  X
 } from 'lucide-react'
+
+// 规则集记录类型
+interface RuleSetRecord {
+  id: number
+  name: string
+  version: string
+  rulesJson: string
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+}
 
 // Wails 生成的绑定（需要在 wails dev 后生成）
 declare global {
@@ -52,6 +69,15 @@ declare global {
           LaunchBrowser: (headless: boolean) => Promise<{ devToolsUrl: string; success: boolean; error?: string }>
           CloseBrowser: () => Promise<{ success: boolean; error?: string }>
           GetBrowserStatus: () => Promise<{ devToolsUrl: string; success: boolean; error?: string }>
+          // 规则集持久化 API
+          ListRuleSets: () => Promise<{ ruleSets: RuleSetRecord[]; success: boolean; error?: string }>
+          GetRuleSet: (id: number) => Promise<{ ruleSet: RuleSetRecord; success: boolean; error?: string }>
+          SaveRuleSet: (id: number, name: string, rulesJson: string) => Promise<{ ruleSet: RuleSetRecord; success: boolean; error?: string }>
+          DeleteRuleSet: (id: number) => Promise<{ success: boolean; error?: string }>
+          SetActiveRuleSet: (id: number) => Promise<{ success: boolean; error?: string }>
+          GetActiveRuleSet: () => Promise<{ ruleSet: RuleSetRecord | null; success: boolean; error?: string }>
+          RenameRuleSet: (id: number, newName: string) => Promise<{ success: boolean; error?: string }>
+          DuplicateRuleSet: (id: number, newName: string) => Promise<{ ruleSet: RuleSetRecord; success: boolean; error?: string }>
         }
       }
     }
@@ -573,12 +599,141 @@ function TargetsPanel({
   )
 }
 
-// Rules 面板组件（可视化编辑器）
+// Rules 面板组件（可视化编辑器 + 规则集管理）
 function RulesPanel({ sessionId }: { sessionId: string | null }) {
   const [ruleSet, setRuleSet] = useState<RuleSet>(createEmptyRuleSet())
   const [status, setStatus] = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' })
   const [showJson, setShowJson] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  
+  // 新增：规则集管理状态
+  const [ruleSets, setRuleSets] = useState<RuleSetRecord[]>([])
+  const [currentRuleSetId, setCurrentRuleSetId] = useState<number>(0)
+  const [currentRuleSetName, setCurrentRuleSetName] = useState<string>('默认规则集')
+  const [isLoading, setIsLoading] = useState(false)
+  const [showRuleSetManager, setShowRuleSetManager] = useState(false)
+  const [editingName, setEditingName] = useState<number | null>(null)
+  const [newName, setNewName] = useState('')
+
+  // 组件挂载时加载规则集列表和激活的规则集
+  useEffect(() => {
+    loadRuleSets()
+  }, [])
+
+  // 加载规则集列表
+  const loadRuleSets = async () => {
+    try {
+      const result = await window.go?.gui?.App?.ListRuleSets()
+      if (result?.success) {
+        setRuleSets(result.ruleSets || [])
+        // 查找激活的规则集
+        const activeResult = await window.go?.gui?.App?.GetActiveRuleSet()
+        if (activeResult?.success && activeResult.ruleSet) {
+          loadRuleSetData(activeResult.ruleSet)
+        } else if (result.ruleSets && result.ruleSets.length > 0) {
+          // 如果没有激活的，加载第一个
+          loadRuleSetData(result.ruleSets[0])
+        }
+      }
+    } catch (e) {
+      console.error('Load rule sets error:', e)
+    }
+  }
+
+  // 加载规则集数据到编辑器
+  const loadRuleSetData = (record: RuleSetRecord) => {
+    try {
+      const rules = record.rulesJson ? JSON.parse(record.rulesJson) : []
+      setRuleSet({ version: record.version || '1.0', rules })
+      setCurrentRuleSetId(record.id)
+      setCurrentRuleSetName(record.name)
+    } catch (e) {
+      console.error('Parse rules error:', e)
+      setRuleSet(createEmptyRuleSet())
+    }
+  }
+
+  // 选择规则集
+  const handleSelectRuleSet = async (record: RuleSetRecord) => {
+    loadRuleSetData(record)
+    // 设置为激活
+    await window.go?.gui?.App?.SetActiveRuleSet(record.id)
+    setShowRuleSetManager(false)
+    showStatusMessage('success', `已切换到规则集: ${record.name}`)
+  }
+
+  // 创建新规则集
+  const handleCreateRuleSet = async () => {
+    const name = `规则集 ${new Date().toLocaleString()}`
+    try {
+      const result = await window.go?.gui?.App?.SaveRuleSet(0, name, JSON.stringify({ version: '1.0', rules: [] }))
+      if (result?.success && result.ruleSet) {
+        await loadRuleSets()
+        loadRuleSetData(result.ruleSet)
+        await window.go?.gui?.App?.SetActiveRuleSet(result.ruleSet.id)
+        showStatusMessage('success', '新规则集已创建')
+      }
+    } catch (e) {
+      showStatusMessage('error', '创建失败: ' + String(e))
+    }
+  }
+
+  // 删除规则集
+  const handleDeleteRuleSet = async (id: number) => {
+    if (ruleSets.length <= 1) {
+      showStatusMessage('error', '至少保留一个规则集')
+      return
+    }
+    try {
+      const result = await window.go?.gui?.App?.DeleteRuleSet(id)
+      if (result?.success) {
+        await loadRuleSets()
+        // 如果删除的是当前规则集，切换到第一个
+        if (id === currentRuleSetId) {
+          const remaining = ruleSets.filter(r => r.id !== id)
+          if (remaining.length > 0) {
+            loadRuleSetData(remaining[0])
+            await window.go?.gui?.App?.SetActiveRuleSet(remaining[0].id)
+          }
+        }
+        showStatusMessage('success', '规则集已删除')
+      }
+    } catch (e) {
+      showStatusMessage('error', '删除失败: ' + String(e))
+    }
+  }
+
+  // 重命名规则集
+  const handleRenameRuleSet = async (id: number) => {
+    if (!newName.trim()) return
+    try {
+      const result = await window.go?.gui?.App?.RenameRuleSet(id, newName.trim())
+      if (result?.success) {
+        await loadRuleSets()
+        if (id === currentRuleSetId) {
+          setCurrentRuleSetName(newName.trim())
+        }
+        setEditingName(null)
+        setNewName('')
+        showStatusMessage('success', '已重命名')
+      }
+    } catch (e) {
+      showStatusMessage('error', '重命名失败: ' + String(e))
+    }
+  }
+
+  // 复制规则集
+  const handleDuplicateRuleSet = async (id: number, originalName: string) => {
+    try {
+      const result = await window.go?.gui?.App?.DuplicateRuleSet(id, `${originalName} (副本)`)
+      if (result?.success) {
+        await loadRuleSets()
+        showStatusMessage('success', '规则集已复制')
+      }
+    } catch (e) {
+      showStatusMessage('error', '复制失败: ' + String(e))
+    }
+  }
 
   // 添加新规则
   const handleAddRule = () => {
@@ -593,24 +748,56 @@ function RulesPanel({ sessionId }: { sessionId: string | null }) {
     setRuleSet({ ...ruleSet, rules })
   }
 
-  // 加载规则到后端
-  const handleLoadRules = async () => {
-    if (!sessionId) return
-    
-    try {
-      const json = JSON.stringify(ruleSet, null, 2)
-      const result = await window.go?.gui?.App?.LoadRules(sessionId, json)
-      if (result?.success) {
-        setStatus({ type: 'success', message: `成功加载 ${ruleSet.rules.length} 条规则` })
-      } else {
-        setStatus({ type: 'error', message: result?.error || '加载失败' })
-      }
-    } catch (e) {
-      setStatus({ type: 'error', message: String(e) })
-    }
-    
-    // 3秒后清除状态
+  // 显示状态消息
+  const showStatusMessage = (type: 'success' | 'error', message: string) => {
+    setStatus({ type, message })
     setTimeout(() => setStatus({ type: null, message: '' }), 3000)
+  }
+
+  // 保存并应用规则（持久化 + 加载到会话）
+  const handleSaveAndApply = async () => {
+    setIsLoading(true)
+    try {
+      const rulesJson = JSON.stringify(ruleSet)
+      
+      // 1. 保存到数据库
+      const saveResult = await window.go?.gui?.App?.SaveRuleSet(
+        currentRuleSetId,
+        currentRuleSetName,
+        rulesJson
+      )
+      
+      if (!saveResult?.success) {
+        showStatusMessage('error', saveResult?.error || '保存失败')
+        return
+      }
+      
+      // 更新当前规则集ID（新建时会返回新ID）
+      if (saveResult.ruleSet) {
+        setCurrentRuleSetId(saveResult.ruleSet.id)
+        // 设置为激活规则集
+        await window.go?.gui?.App?.SetActiveRuleSet(saveResult.ruleSet.id)
+      }
+      
+      // 2. 如果有会话，加载到会话
+      if (sessionId) {
+        const loadResult = await window.go?.gui?.App?.LoadRules(sessionId, rulesJson)
+        if (loadResult?.success) {
+          showStatusMessage('success', `已保存并应用 ${ruleSet.rules.length} 条规则`)
+        } else {
+          showStatusMessage('success', `已保存 ${ruleSet.rules.length} 条规则（未连接会话）`)
+        }
+      } else {
+        showStatusMessage('success', `已保存 ${ruleSet.rules.length} 条规则`)
+      }
+      
+      // 刷新规则集列表
+      await loadRuleSets()
+    } catch (e) {
+      showStatusMessage('error', String(e))
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   // 导出 JSON
@@ -620,7 +807,7 @@ function RulesPanel({ sessionId }: { sessionId: string | null }) {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = 'rules.json'
+    a.download = `${currentRuleSetName}.json`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -637,21 +824,121 @@ function RulesPanel({ sessionId }: { sessionId: string | null }) {
         const imported = JSON.parse(json) as RuleSet
         if (imported.version && Array.isArray(imported.rules)) {
           setRuleSet(imported)
-          setStatus({ type: 'success', message: `导入成功，共 ${imported.rules.length} 条规则` })
+          showStatusMessage('success', `导入成功，共 ${imported.rules.length} 条规则（请点保存以持久化）`)
         } else {
-          setStatus({ type: 'error', message: 'JSON 格式不正确' })
+          showStatusMessage('error', 'JSON 格式不正确')
         }
       } catch {
-        setStatus({ type: 'error', message: 'JSON 解析失败' })
+        showStatusMessage('error', 'JSON 解析失败')
       }
     }
     reader.readAsText(file)
-    e.target.value = '' // 重置输入
+    e.target.value = ''
   }
 
   return (
     <div className="h-full flex flex-col">
-      {/* 工具栏 */}
+      {/* 工具栏 - 第一行：规则集选择 */}
+      <div className="flex items-center gap-2 mb-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setShowRuleSetManager(!showRuleSetManager)}
+          className="gap-1"
+        >
+          <FolderOpen className="w-4 h-4" />
+          {currentRuleSetName || '选择规则集'}
+        </Button>
+        <span className="text-xs text-muted-foreground">
+          {ruleSets.length} 个规则集
+        </span>
+      </div>
+
+      {/* 规则集管理面板 */}
+      {showRuleSetManager && (
+        <div className="mb-4 p-3 border rounded-lg bg-muted/30">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium">规则集管理</span>
+            <Button size="sm" variant="outline" onClick={handleCreateRuleSet}>
+              <Plus className="w-3 h-3 mr-1" />
+              新建
+            </Button>
+          </div>
+          <ScrollArea className="h-40">
+            <div className="space-y-1">
+              {ruleSets.map((rs) => (
+                <div
+                  key={rs.id}
+                  className={`flex items-center gap-2 p-2 rounded text-sm hover:bg-muted transition-colors ${
+                    rs.id === currentRuleSetId ? 'bg-primary/10 border border-primary/30' : ''
+                  }`}
+                >
+                  {editingName === rs.id ? (
+                    <div className="flex-1 flex items-center gap-1">
+                      <Input
+                        value={newName}
+                        onChange={(e) => setNewName(e.target.value)}
+                        className="h-6 text-sm"
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleRenameRuleSet(rs.id)
+                          if (e.key === 'Escape') { setEditingName(null); setNewName('') }
+                        }}
+                      />
+                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => handleRenameRuleSet(rs.id)}>
+                        <Check className="w-3 h-3" />
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => { setEditingName(null); setNewName('') }}>
+                        <X className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <>
+                      <span
+                        className="flex-1 cursor-pointer truncate"
+                        onClick={() => handleSelectRuleSet(rs)}
+                      >
+                        {rs.name}
+                        {rs.isActive && <span className="ml-1 text-xs text-primary">(激活)</span>}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {JSON.parse(rs.rulesJson || '[]').length} 规则
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 w-6 p-0"
+                        onClick={() => { setEditingName(rs.id); setNewName(rs.name) }}
+                      >
+                        <Edit3 className="w-3 h-3" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 w-6 p-0"
+                        onClick={() => handleDuplicateRuleSet(rs.id, rs.name)}
+                      >
+                        <Copy className="w-3 h-3" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 w-6 p-0 text-destructive hover:text-destructive"
+                        onClick={() => handleDeleteRuleSet(rs.id)}
+                        disabled={ruleSets.length <= 1}
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+        </div>
+      )}
+
+      {/* 工具栏 - 第二行：规则操作 */}
       <div className="flex items-center justify-between mb-4 gap-2">
         <div className="flex items-center gap-2">
           <Button onClick={handleAddRule} size="sm">
@@ -680,9 +967,13 @@ function RulesPanel({ sessionId }: { sessionId: string | null }) {
             <Download className="w-4 h-4 mr-1" />
             导出
           </Button>
-          <Button size="sm" onClick={handleLoadRules} disabled={!sessionId || ruleSet.rules.length === 0}>
+          <Button 
+            size="sm" 
+            onClick={handleSaveAndApply} 
+            disabled={isLoading}
+          >
             <Save className="w-4 h-4 mr-1" />
-            应用规则
+            {isLoading ? '保存中...' : '保存并应用'}
           </Button>
         </div>
       </div>
@@ -718,7 +1009,7 @@ function RulesPanel({ sessionId }: { sessionId: string | null }) {
 
       {/* 规则计数 */}
       <div className="text-xs text-muted-foreground mt-2 pt-2 border-t">
-        共 {ruleSet.rules.length} 条规则 · 版本 {ruleSet.version}
+        共 {ruleSet.rules.length} 条规则 · 版本 {ruleSet.version} · 规则集: {currentRuleSetName}
       </div>
     </div>
   )

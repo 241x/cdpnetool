@@ -30,7 +30,7 @@ export function GetBrowserStatus():Promise<gui.LaunchBrowserResult>;
 
 export function GetCurrentSession():Promise<string>;
 
-export function GetEventStats():Promise<any>;
+export function GetEventStats():Promise<gui.EventStatsResult>;
 
 export function GetRuleSet(arg1:number):Promise<gui.RuleSetResult>;
 
