@@ -375,7 +375,7 @@ function App() {
       </div>
 
       {/* 主内容区 */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden min-h-0">
         {/* 左侧面板 - 状态 */}
         <div className="w-64 border-r flex flex-col shrink-0">
           <div className="p-4 border-b">
@@ -419,8 +419,8 @@ function App() {
         </div>
 
         {/* 右侧主区域 */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <Tabs defaultValue="targets" className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+          <Tabs defaultValue="targets" className="flex-1 flex flex-col min-h-0">
             <div className="border-b px-4">
               <TabsList className="h-10">
                 <TabsTrigger value="targets" className="gap-2">
@@ -438,21 +438,25 @@ function App() {
               </TabsList>
             </div>
 
-            <TabsContent value="targets" className="flex-1 p-4 overflow-auto m-0">
-              <TargetsPanel 
-                targets={targets}
-                attachedTargets={attachedTargets}
-                onToggle={handleToggleTarget}
-                isConnected={isConnected}
-              />
+            <TabsContent value="targets" className="flex-1 overflow-hidden m-0 min-h-0 data-[state=active]:flex data-[state=active]:flex-col">
+              <div className="h-full overflow-auto p-4">
+                <TargetsPanel 
+                  targets={targets}
+                  attachedTargets={attachedTargets}
+                  onToggle={handleToggleTarget}
+                  isConnected={isConnected}
+                />
+              </div>
             </TabsContent>
 
-            <TabsContent value="rules" className="flex-1 p-4 overflow-auto m-0">
+            <TabsContent value="rules" className="flex-1 overflow-hidden m-0 min-h-0 data-[state=active]:flex data-[state=active]:flex-col">
               <RulesPanel sessionId={currentSessionId} />
             </TabsContent>
 
-            <TabsContent value="events" className="flex-1 p-4 overflow-auto m-0">
-              <EventsPanel events={events as InterceptEvent[]} onClear={clearEvents} />
+            <TabsContent value="events" className="flex-1 overflow-hidden m-0 min-h-0 data-[state=active]:flex data-[state=active]:flex-col">
+              <div className="h-full overflow-auto p-4">
+                <EventsPanel events={events as InterceptEvent[]} onClear={clearEvents} />
+              </div>
             </TabsContent>
           </Tabs>
         </div>
@@ -797,7 +801,7 @@ function RulesPanel({ sessionId }: { sessionId: string | null }) {
   }
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="flex-1 flex flex-col p-4 min-h-0">
       {/* 初始化加载状态 */}
       {isInitializing ? (
         <div className="flex items-center justify-center h-full text-muted-foreground">
@@ -809,7 +813,7 @@ function RulesPanel({ sessionId }: { sessionId: string | null }) {
       ) : (
         <>
       {/* 工具栏 - 第一行：规则集选择 */}
-      <div className="flex items-center gap-2 mb-2">
+      <div className="flex items-center gap-2 mb-2 shrink-0">
         <Button
           variant="outline"
           size="sm"
@@ -826,7 +830,7 @@ function RulesPanel({ sessionId }: { sessionId: string | null }) {
 
       {/* 规则集管理面板 */}
       {showRuleSetManager && (
-        <div className="mb-4 p-3 border rounded-lg bg-muted/30">
+        <div className="mb-4 p-3 border rounded-lg bg-muted/30 shrink-0">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-medium">规则集管理</span>
             <Button size="sm" variant="outline" onClick={handleCreateRuleSet}>
@@ -917,7 +921,7 @@ function RulesPanel({ sessionId }: { sessionId: string | null }) {
       )}
 
       {/* 工具栏 - 第二行：规则操作 */}
-      <div className="flex items-center justify-between mb-4 gap-2">
+      <div className="flex items-center justify-between mb-4 gap-2 shrink-0">
         <div className="flex items-center gap-2">
           <Button onClick={handleAddRule} size="sm">
             <Plus className="w-4 h-4 mr-1" />
@@ -958,7 +962,7 @@ function RulesPanel({ sessionId }: { sessionId: string | null }) {
 
       {/* 状态提示 */}
       {status.type && (
-        <div className={`p-2 rounded text-sm mb-4 ${
+        <div className={`p-2 rounded text-sm mb-4 shrink-0 ${
           status.type === 'success' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'
         }`}>
           {status.message}
@@ -966,7 +970,7 @@ function RulesPanel({ sessionId }: { sessionId: string | null }) {
       )}
 
       {/* 规则编辑区 */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 min-h-0 overflow-auto">
         {showJson ? (
           <textarea
             value={JSON.stringify(ruleSet, null, 2)}
@@ -986,7 +990,7 @@ function RulesPanel({ sessionId }: { sessionId: string | null }) {
       </div>
 
       {/* 规则计数 */}
-      <div className="text-xs text-muted-foreground mt-2 pt-2 border-t">
+      <div className="text-xs text-muted-foreground mt-2 pt-2 border-t shrink-0">
         共 {ruleSet.rules.length} 条规则 · 版本 {ruleSet.version} · 规则集: {currentRuleSetName}
       </div>
         </>

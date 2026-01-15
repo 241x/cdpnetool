@@ -3,7 +3,6 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
 import { ChevronDown, ChevronUp, Trash2, Copy, GripVertical, Power, PowerOff } from 'lucide-react'
 import { ConditionGroup } from './ConditionEditor'
@@ -247,29 +246,27 @@ export function RuleListEditor({ rules, onChange }: RuleListEditorProps) {
   const sortedRules = [...rules].sort((a, b) => b.priority - a.priority)
 
   return (
-    <ScrollArea className="h-full">
-      <div className="space-y-3 pr-4">
-        {sortedRules.map((rule) => {
-          const originalIndex = rules.findIndex(r => r.id === rule.id)
-          return (
-            <RuleEditor
-              key={rule.id}
-              rule={rule}
-              onChange={(r) => updateRule(originalIndex, r)}
-              onRemove={() => removeRule(originalIndex)}
-              onDuplicate={() => duplicateRule(originalIndex)}
-              isExpanded={expandedRules.has(rule.id)}
-              onToggleExpand={() => toggleExpand(rule.id)}
-            />
-          )
-        })}
+    <div className="space-y-3 pr-4">
+      {sortedRules.map((rule) => {
+        const originalIndex = rules.findIndex(r => r.id === rule.id)
+        return (
+          <RuleEditor
+            key={rule.id}
+            rule={rule}
+            onChange={(r) => updateRule(originalIndex, r)}
+            onRemove={() => removeRule(originalIndex)}
+            onDuplicate={() => duplicateRule(originalIndex)}
+            isExpanded={expandedRules.has(rule.id)}
+            onToggleExpand={() => toggleExpand(rule.id)}
+          />
+        )
+      })}
 
-        {rules.length === 0 && (
-          <div className="text-center text-muted-foreground p-8 border rounded-lg border-dashed">
-            暂无规则，点击上方 "添加规则" 按钮创建
-          </div>
-        )}
-      </div>
-    </ScrollArea>
+      {rules.length === 0 && (
+        <div className="text-center text-muted-foreground p-8 border rounded-lg border-dashed">
+          暂无规则，点击上方 "添加规则" 按钮创建
+        </div>
+      )}
+    </div>
   )
 }
