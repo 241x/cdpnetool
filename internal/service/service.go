@@ -21,12 +21,11 @@ type svc struct {
 }
 
 type session struct {
-	id      model.SessionID
-	cfg     model.SessionConfig
-	config  *rulespec.Config
-	events  chan model.Event
-	pending chan model.PendingItem
-	mgr     *cdp.Manager
+	id     model.SessionID
+	cfg    model.SessionConfig
+	config *rulespec.Config
+	events chan model.Event
+	mgr    *cdp.Manager
 }
 
 // New 创建并返回服务层实例
@@ -58,12 +57,11 @@ func (s *svc) StartSession(cfg model.SessionConfig) (model.SessionID, error) {
 
 	id := model.SessionID(uuid.New().String())
 	ses := &session{
-		id:      id,
-		cfg:     cfg,
-		events:  make(chan model.Event, 128),
-		pending: make(chan model.PendingItem, cfg.PendingCapacity),
+		id:     id,
+		cfg:    cfg,
+		events: make(chan model.Event, 128),
 	}
-	ses.mgr = cdp.New(cfg.DevToolsURL, ses.events, ses.pending, s.log)
+	ses.mgr = cdp.New(cfg.DevToolsURL, ses.events, s.log)
 	ses.mgr.SetConcurrency(cfg.Concurrency)
 	ses.mgr.SetRuntime(cfg.BodySizeThreshold, cfg.ProcessTimeoutMS)
 	s.sessions[id] = ses
@@ -87,7 +85,6 @@ func (s *svc) StopSession(id model.SessionID) error {
 		_ = ses.mgr.DetachAll()
 	}
 	close(ses.events)
-	close(ses.pending)
 	s.log.Info("会话已停止", "session", string(id))
 	return nil
 }
@@ -101,7 +98,7 @@ func (s *svc) AttachTarget(id model.SessionID, target model.TargetID) error {
 		return errors.New("cdpnetool: session not found")
 	}
 	if ses.mgr == nil {
-		ses.mgr = cdp.New(ses.cfg.DevToolsURL, ses.events, ses.pending, s.log)
+		ses.mgr = cdp.New(ses.cfg.DevToolsURL, ses.events, s.log)
 		ses.mgr.SetConcurrency(ses.cfg.Concurrency)
 		ses.mgr.SetRuntime(ses.cfg.BodySizeThreshold, ses.cfg.ProcessTimeoutMS)
 	}
@@ -137,7 +134,7 @@ func (s *svc) ListTargets(id model.SessionID) ([]model.TargetInfo, error) {
 		return nil, errors.New("cdpnetool: session not found")
 	}
 	if ses.mgr == nil {
-		ses.mgr = cdp.New(ses.cfg.DevToolsURL, ses.events, ses.pending, s.log)
+		ses.mgr = cdp.New(ses.cfg.DevToolsURL, ses.events, s.log)
 		ses.mgr.SetConcurrency(ses.cfg.Concurrency)
 		ses.mgr.SetRuntime(ses.cfg.BodySizeThreshold, ses.cfg.ProcessTimeoutMS)
 	}
@@ -225,32 +222,4 @@ func (s *svc) SubscribeEvents(id model.SessionID) (<-chan model.Event, error) {
 		return nil, errors.New("cdpnetool: session not found")
 	}
 	return ses.events, nil
-}
-
-// SubscribePending 订阅会话的待审批队列（已废弃，保留接口兼容）
-func (s *svc) SubscribePending(id model.SessionID) (<-chan model.PendingItem, error) {
-	s.mu.Lock()
-	ses, ok := s.sessions[id]
-	s.mu.Unlock()
-	if !ok {
-		return nil, errors.New("cdpnetool: session not found")
-	}
-	return ses.pending, nil
-}
-
-// Note: 审批功能已移除，以下方法保留作为接口兼容，但不做实际操作
-
-// ApproveRequest 审批请求阶段（已废弃）
-func (s *svc) ApproveRequest(itemID string, mutations map[string]any) error {
-	return nil
-}
-
-// ApproveResponse 审批响应阶段（已废弃）
-func (s *svc) ApproveResponse(itemID string, mutations map[string]any) error {
-	return nil
-}
-
-// Reject 拒绝审批项（已废弃）
-func (s *svc) Reject(itemID string) error {
-	return nil
 }

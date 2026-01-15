@@ -39,16 +39,6 @@ type Event struct {
 	Timestamp  int64     `json:"timestamp"`
 }
 
-// PendingItem 待处理项
-type PendingItem struct {
-	ID     string   `json:"id"`
-	Stage  string   `json:"stage"`
-	URL    string   `json:"url"`
-	Method string   `json:"method"`
-	Target TargetID `json:"target"`
-	Rule   *RuleID  `json:"rule"`
-}
-
 // TargetInfo 目标信息
 type TargetInfo struct {
 	ID        TargetID `json:"id"`

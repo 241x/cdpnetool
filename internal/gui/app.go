@@ -106,7 +106,7 @@ type SessionResult struct {
 	Error     string `json:"error,omitempty"`
 }
 
-// StartSession 创建新的拦截会话，并启动事件和 Pending 订阅。
+// StartSession 创建新的拦截会话，并启动事件订阅。
 func (a *App) StartSession(devToolsURL string) SessionResult {
 	a.log.Info("启动会话", "devToolsURL", devToolsURL)
 
@@ -122,8 +122,6 @@ func (a *App) StartSession(devToolsURL string) SessionResult {
 	a.currentSession = sid
 	// 启动事件订阅
 	go a.subscribeEvents(sid)
-	// 启动 Pending 订阅
-	go a.subscribePending(sid)
 
 	a.log.Info("会话启动成功", "sessionID", sid)
 	return SessionResult{SessionID: string(sid), Success: true}
@@ -270,74 +268,6 @@ func (a *App) subscribeEvents(sessionID model.SessionID) {
 		}
 	}
 	a.log.Debug("事件订阅已结束", "sessionID", sessionID)
-}
-
-// PendingListResult 表示待审批列表结果。
-type PendingListResult struct {
-	Items   []model.PendingItem `json:"items"`
-	Success bool                `json:"success"`
-	Error   string              `json:"error,omitempty"`
-}
-
-// subscribePending 订阅 Pending 事件并通过 Wails 事件系统推送到前端。
-func (a *App) subscribePending(sessionID model.SessionID) {
-	ch, err := a.service.SubscribePending(sessionID)
-	if err != nil {
-		a.log.Error("订阅 Pending 事件失败", "sessionID", sessionID, "error", err)
-		return
-	}
-
-	a.log.Debug("开始订阅 Pending 事件", "sessionID", sessionID)
-	for item := range ch {
-		runtime.EventsEmit(a.ctx, "pending-item", item)
-	}
-	a.log.Debug("Pending 订阅已结束", "sessionID", sessionID)
-}
-
-// ApproveRequest 审批通过请求阶段（已废弃）。
-func (a *App) ApproveRequest(itemID string, mutationsJSON string) OperationResult {
-	var mutations map[string]any
-	if mutationsJSON != "" {
-		if err := json.Unmarshal([]byte(mutationsJSON), &mutations); err != nil {
-			a.log.Error("ApproveRequest JSON 解析失败", "itemID", itemID, "error", err)
-			return OperationResult{Success: false, Error: "JSON 解析失败: " + err.Error()}
-		}
-	}
-
-	err := a.service.ApproveRequest(itemID, mutations)
-	if err != nil {
-		a.log.Error("审批请求失败", "itemID", itemID, "error", err)
-		return OperationResult{Success: false, Error: err.Error()}
-	}
-	return OperationResult{Success: true}
-}
-
-// ApproveResponse 审批通过响应阶段（已废弃）。
-func (a *App) ApproveResponse(itemID string, mutationsJSON string) OperationResult {
-	var mutations map[string]any
-	if mutationsJSON != "" {
-		if err := json.Unmarshal([]byte(mutationsJSON), &mutations); err != nil {
-			a.log.Error("ApproveResponse JSON 解析失败", "itemID", itemID, "error", err)
-			return OperationResult{Success: false, Error: "JSON 解析失败: " + err.Error()}
-		}
-	}
-
-	err := a.service.ApproveResponse(itemID, mutations)
-	if err != nil {
-		a.log.Error("审批响应失败", "itemID", itemID, "error", err)
-		return OperationResult{Success: false, Error: err.Error()}
-	}
-	return OperationResult{Success: true}
-}
-
-// Reject 拒绝指定的审批项，使请求失败。
-func (a *App) Reject(itemID string) OperationResult {
-	err := a.service.Reject(itemID)
-	if err != nil {
-		a.log.Error("拒绝审批项失败", "itemID", itemID, "error", err)
-		return OperationResult{Success: false, Error: err.Error()}
-	}
-	return OperationResult{Success: true}
 }
 
 // LaunchBrowserResult 表示启动浏览器的结果。

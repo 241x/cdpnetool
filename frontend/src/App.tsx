@@ -7,10 +7,8 @@ import { Toaster } from '@/components/ui/toaster'
 import { useToast } from '@/hooks/use-toast'
 import { useSessionStore, useThemeStore } from '@/stores'
 import { RuleListEditor } from '@/components/rules'
-import { PendingPanel } from '@/components/pending'
 import { EventsPanel } from '@/components/events'
 import type { Rule, RuleSet } from '@/types/rules'
-import type { PendingItem, RewriteMutation } from '@/types/pending'
 import type { InterceptEvent } from '@/types/events'
 import { createEmptyRule, createEmptyRuleSet } from '@/types/rules'
 import { 
@@ -23,7 +21,6 @@ import {
   Link2Off,
   FileJson,
   Activity,
-  Clock,
   Plus,
   Download,
   Upload,
@@ -107,7 +104,6 @@ function App() {
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
   const [isLaunchingBrowser, setIsLaunchingBrowser] = useState(false)
-  const [pendingItems, setPendingItems] = useState<PendingItem[]>([])
 
   // 启动浏览器
   const handleLaunchBrowser = async () => {
@@ -321,68 +317,8 @@ function App() {
         }
         addEvent(enrichedEvent)
       })
-      // @ts-ignore
-      window.runtime.EventsOn('pending-item', (item: PendingItem) => {
-        setPendingItems(prev => [item, ...prev])
-      })
     }
   }, [addEvent])
-
-  // 审批 Pending 项
-  const handleApprovePending = async (itemId: string, stage: 'request' | 'response', mutations?: RewriteMutation) => {
-    try {
-      const mutationsJson = mutations ? JSON.stringify(mutations) : ''
-      const result = stage === 'request' 
-        ? await window.go?.gui?.App?.ApproveRequest(itemId, mutationsJson)
-        : await window.go?.gui?.App?.ApproveResponse(itemId, mutationsJson)
-      
-      if (result?.success) {
-        setPendingItems(prev => prev.filter(item => item.id !== itemId))
-        toast({
-          variant: 'success',
-          title: '已通过',
-        })
-      } else {
-        toast({
-          variant: 'destructive',
-          title: '审批失败',
-          description: result?.error,
-        })
-      }
-    } catch (e) {
-      toast({
-        variant: 'destructive',
-        title: '审批错误',
-        description: String(e),
-      })
-    }
-  }
-
-  // 拒绝 Pending 项
-  const handleRejectPending = async (itemId: string) => {
-    try {
-      const result = await window.go?.gui?.App?.Reject(itemId)
-      if (result?.success) {
-        setPendingItems(prev => prev.filter(item => item.id !== itemId))
-        toast({
-          variant: 'success',
-          title: '已拒绝',
-        })
-      } else {
-        toast({
-          variant: 'destructive',
-          title: '拒绝失败',
-          description: result?.error,
-        })
-      }
-    } catch (e) {
-      toast({
-        variant: 'destructive',
-        title: '拒绝错误',
-        description: String(e),
-      })
-    }
-  }
 
   return (
     <div className="h-screen flex flex-col bg-background text-foreground">
@@ -499,10 +435,6 @@ function App() {
                   <Activity className="w-4 h-4" />
                   Events
                 </TabsTrigger>
-                <TabsTrigger value="pending" className="gap-2">
-                  <Clock className="w-4 h-4" />
-                  Pending
-                </TabsTrigger>
               </TabsList>
             </div>
 
@@ -521,14 +453,6 @@ function App() {
 
             <TabsContent value="events" className="flex-1 p-4 overflow-auto m-0">
               <EventsPanel events={events as InterceptEvent[]} onClear={clearEvents} />
-            </TabsContent>
-
-            <TabsContent value="pending" className="flex-1 p-4 overflow-auto m-0">
-              <PendingPanel
-                items={pendingItems}
-                onApprove={handleApprovePending}
-                onReject={handleRejectPending}
-              />
             </TabsContent>
           </Tabs>
         </div>

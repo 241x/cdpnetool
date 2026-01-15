@@ -5,9 +5,6 @@ export type EventType =
   | 'continued'    // 请求已放行
   | 'mutated'      // 请求/响应被修改
   | 'failed'       // 请求被阻断
-  | 'paused'       // 请求进入 Pending
-  | 'approved'     // Pending 被审批
-  | 'rejected'     // Pending 被拒绝
   | 'error'        // 发生错误
 
 export interface InterceptEvent {
@@ -34,9 +31,6 @@ export const EVENT_TYPE_LABELS: Record<EventType, string> = {
   continued: '放行',
   mutated: '修改',
   failed: '阻断',
-  paused: '暂停',
-  approved: '审批通过',
-  rejected: '审批拒绝',
   error: '错误',
 }
 
@@ -45,9 +39,6 @@ export const EVENT_TYPE_COLORS: Record<EventType, { bg: string; text: string }> 
   continued: { bg: 'bg-green-500/20', text: 'text-green-500' },
   mutated: { bg: 'bg-yellow-500/20', text: 'text-yellow-500' },
   failed: { bg: 'bg-red-500/20', text: 'text-red-500' },
-  paused: { bg: 'bg-purple-500/20', text: 'text-purple-500' },
-  approved: { bg: 'bg-emerald-500/20', text: 'text-emerald-500' },
-  rejected: { bg: 'bg-orange-500/20', text: 'text-orange-500' },
   error: { bg: 'bg-rose-500/20', text: 'text-rose-500' },
 }
 

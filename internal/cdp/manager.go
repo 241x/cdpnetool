@@ -47,7 +47,7 @@ type targetSession struct {
 }
 
 // New 创建并返回一个管理器，用于管理 CDP 连接与拦截流程
-func New(devtoolsURL string, events chan model.Event, pending chan model.PendingItem, l logger.Logger) *Manager {
+func New(devtoolsURL string, events chan model.Event, l logger.Logger) *Manager {
 	if l == nil {
 		l = logger.NewNoopLogger()
 	}

@@ -38,18 +38,6 @@ type Service interface {
 
 	// SubscribeEvents 订阅事件
 	SubscribeEvents(id model.SessionID) (<-chan model.Event, error)
-
-	// SubscribePending 订阅待处理项
-	SubscribePending(id model.SessionID) (<-chan model.PendingItem, error)
-
-	// ApproveRequest 批准请求（已废弃）
-	ApproveRequest(itemID string, mutations map[string]any) error
-
-	// ApproveResponse 批准响应（已废弃）
-	ApproveResponse(itemID string, mutations map[string]any) error
-
-	// Reject 拒绝
-	Reject(itemID string) error
 }
 
 // NewService 创建并返回服务接口实现
