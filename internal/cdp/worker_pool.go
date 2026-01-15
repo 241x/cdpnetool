@@ -26,10 +26,11 @@ func newWorkerPool(size int) *workerPool {
 	if size <= 0 {
 		return &workerPool{}
 	}
+	// 队列容量 = worker 数量 * 8，提供足够的突发请求缓冲
 	return &workerPool{
 		sem:      make(chan struct{}, size),
-		queue:    make(chan func(), size*2),
-		queueCap: size * 2,
+		queue:    make(chan func(), size*8),
+		queueCap: size * 8,
 	}
 }
 
