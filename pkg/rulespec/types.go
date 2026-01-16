@@ -10,21 +10,23 @@ const (
 
 // Config 配置文件根结构
 type Config struct {
-	ID          string         `json:"id"`                    // 配置唯一标识符
-	Name        string         `json:"name"`                  // 配置名称
-	Version     string         `json:"version"`               // 配置格式规范版本
-	Description string         `json:"description,omitempty"` // 配置描述
-	Settings    map[string]any `json:"settings,omitempty"`    // 预留设置项
-	Rules       []Rule         `json:"rules"`                 // 规则列表
+	ID          string         `json:"id"`          // 配置唯一标识符
+	Name        string         `json:"name"`        // 配置名称
+	Version     string         `json:"version"`     // 配置格式规范版本
+	Description string         `json:"description"` // 配置描述
+	Settings    map[string]any `json:"settings"`    // 预留设置项
+	Rules       []Rule         `json:"rules"`       // 规则列表
 }
 
 // NewConfig 创建一个新的空配置（带 UUID）
 func NewConfig(name string) *Config {
 	return &Config{
-		ID:      uuid.New().String(),
-		Name:    name,
-		Version: DefaultConfigVersion,
-		Rules:   []Rule{},
+		ID:          uuid.New().String(),
+		Name:        name,
+		Version:     DefaultConfigVersion,
+		Description: "",
+		Settings:    map[string]any{},
+		Rules:       []Rule{},
 	}
 }
 
@@ -55,15 +57,15 @@ func NewRule(name string) Rule {
 		Enabled:  true,
 		Priority: 0,
 		Stage:    StageRequest,
-		Match:    Match{},
+		Match:    Match{AllOf: []Condition{}, AnyOf: []Condition{}},
 		Actions:  []Action{},
 	}
 }
 
 // Match 匹配规则
 type Match struct {
-	AllOf []Condition `json:"allOf,omitempty"` // AND 逻辑
-	AnyOf []Condition `json:"anyOf,omitempty"` // OR 逻辑
+	AllOf []Condition `json:"allOf"` // AND 逻辑
+	AnyOf []Condition `json:"anyOf"` // OR 逻辑
 }
 
 // ConditionType 条件类型

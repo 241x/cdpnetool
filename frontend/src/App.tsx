@@ -486,7 +486,18 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
   const [isInitializing, setIsInitializing] = useState(true)
   const [isDirty, setIsDirty] = useState(false)
   const [configInfoExpanded, setConfigInfoExpanded] = useState(false) // 配置信息栏展开状态
-  const [confirmDialog, setConfirmDialog] = useState<{ show: boolean; title: string; message: string; onConfirm: () => void } | null>(null)
+  const [jsonEditorContent, setJsonEditorContent] = useState('') // JSON 编辑器内容
+  const [jsonError, setJsonError] = useState<string | null>(null) // JSON 解析错误
+  // 确认对话框（支持三选项：取消/不保存/保存）
+  const [confirmDialog, setConfirmDialog] = useState<{
+    show: boolean
+    title: string
+    message: string
+    onConfirm: () => void           // 主要操作（如“确定”或“不保存”）
+    onSave?: () => Promise<void>    // 可选的保存操作
+    confirmText?: string            // 确认按钮文字
+    showSaveOption?: boolean        // 是否显示保存选项
+  } | null>(null)
 
   // 组件挂载时加载配置列表
   useEffect(() => {
@@ -533,7 +544,10 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
 
   // 处理规则变更
   const handleRulesChange = (rules: Rule[]) => {
-    setRuleSet({ ...ruleSet, rules })
+    const newConfig = { ...ruleSet, rules }
+    setRuleSet(newConfig)
+    setJsonEditorContent(JSON.stringify(newConfig, null, 2))  // 同步 JSON 编辑器
+    setJsonError(null)
     updateDirty(true)
   }
 
@@ -552,33 +566,66 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
   // 加载配置数据到编辑器
   const loadRuleSetData = (record: ConfigRecord) => {
     try {
+      let config: Config
+      
       if (!record.rulesJson) {
-        setRuleSet(createEmptyConfig())
-        setCurrentRuleSetId(record.id)
-        setCurrentRuleSetName(record.name)
-        setCurrentDescription(record.description || '')
-        updateDirty(false)
-        return
-      }
-      
-      const parsed = JSON.parse(record.rulesJson)
-      // 兼容两种格式：数组或 { version, rules } 对象
-      if (Array.isArray(parsed)) {
-        setRuleSet({ version: record.version || '1.0', rules: parsed })
-      } else if (parsed.rules && Array.isArray(parsed.rules)) {
-        setRuleSet({ version: parsed.version || '1.0', rules: parsed.rules })
+        // 空配置，创建完整结构（保留 UUID 如果有的话）
+        config = {
+          version: record.version || '1.0',
+          description: record.description || '',
+          settings: {},
+          rules: []
+        }
       } else {
-        console.error('Invalid rules format:', parsed)
-        setRuleSet(createEmptyConfig())
+        const parsed = JSON.parse(record.rulesJson)
+        // 兼容两种格式：数组或完整对象
+        if (Array.isArray(parsed)) {
+          // 旧格式（纯规则数组），包装成完整结构
+          config = {
+            version: record.version || '1.0',
+            description: record.description || '',
+            settings: {},
+            rules: parsed
+          }
+        } else if (parsed.rules && Array.isArray(parsed.rules)) {
+          // 完整格式，保留所有字段（包括原始 UUID）
+          config = {
+            id: parsed.id,  // 保留配置 JSON 中的原始 ID（UUID）
+            name: parsed.name,
+            version: parsed.version || '1.0',
+            description: parsed.description ?? record.description ?? '',
+            settings: parsed.settings || {},
+            rules: parsed.rules
+          }
+        } else {
+          console.error('Invalid rules format:', parsed)
+          config = {
+            version: '1.0',
+            description: '',
+            settings: {},
+            rules: []
+          }
+        }
       }
       
-      setCurrentRuleSetId(record.id)
+      setRuleSet(config)
+      setCurrentRuleSetId(record.id)  // 数据库 ID 用于数据库操作
       setCurrentRuleSetName(record.name)
       setCurrentDescription(record.description || '')
+      setJsonEditorContent(JSON.stringify(config, null, 2))  // 同步 JSON 编辑器
+      setJsonError(null)
       updateDirty(false)
     } catch (e) {
       console.error('Parse rules error:', e)
-      setRuleSet(createEmptyConfig())
+      const emptyConfig = {
+        version: '1.0',
+        description: '',
+        settings: {},
+        rules: []
+      }
+      setRuleSet(emptyConfig)
+      setJsonEditorContent(JSON.stringify(emptyConfig, null, 2))
+      setJsonError(null)
       updateDirty(false)
     }
   }
@@ -589,10 +636,19 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
       setConfirmDialog({
         show: true,
         title: '未保存的更改',
-        message: '当前配置有未保存的更改，切换配置将丢失这些更改。是否继续？',
+        message: '当前配置有未保存的更改，切换配置将丢失这些更改。',
+        confirmText: '不保存',
+        showSaveOption: true,
         onConfirm: () => {
           loadRuleSetData(record)
           window.go?.gui?.App?.SetActiveConfig(record.id)
+          toast({ variant: 'success', title: `已切换到配置: ${record.name}` })
+          setConfirmDialog(null)
+        },
+        onSave: async () => {
+          await handleSave()
+          loadRuleSetData(record)
+          await window.go?.gui?.App?.SetActiveConfig(record.id)
           toast({ variant: 'success', title: `已切换到配置: ${record.name}` })
           setConfirmDialog(null)
         }
@@ -608,10 +664,18 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
   const handleCreateRuleSet = async () => {
     try {
       const result = await window.go?.gui?.App?.CreateNewConfig('新配置')
-      if (result?.success && result.config) {
+      if (result?.success && result.config && result.configJson) {
         await loadRuleSets()
-        loadRuleSetData(result.config)
+        // 直接使用后端返回的完整 JSON，而不是数据库记录
+        const newConfig = JSON.parse(result.configJson) as Config
+        setRuleSet(newConfig)
+        setCurrentRuleSetId(result.config.id)
+        setCurrentRuleSetName(result.config.name)
+        setCurrentDescription(result.config.description || '')
+        setJsonEditorContent(result.configJson)  // 同步 JSON 编辑器
+        setJsonError(null)
         await window.go?.gui?.App?.SetActiveConfig(result.config.id)
+        updateDirty(false)
         toast({ variant: 'success', title: '新配置已创建' })
       }
     } catch (e) {
@@ -621,10 +685,6 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
 
   // 删除当前配置
   const handleDeleteCurrentConfig = async () => {
-    if (ruleSets.length <= 1) {
-      toast({ variant: 'destructive', title: '至少保留一个配置' })
-      return
-    }
     setConfirmDialog({
       show: true,
       title: '删除配置',
@@ -638,20 +698,24 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
 
   // 删除配置
   const handleDeleteConfig = async (id: number) => {
-    if (ruleSets.length <= 1) {
-      toast({ variant: 'destructive', title: '至少保留一个配置' })
-      return
-    }
     try {
       const result = await window.go?.gui?.App?.DeleteConfig(id)
       if (result?.success) {
         await loadRuleSets()
-        // 如果删除的是当前配置，切换到第一个
+        // 如果删除的是当前配置，切换到第一个或重置为空状态
         if (id === currentRuleSetId) {
           const remaining = ruleSets.filter(r => r.id !== id)
           if (remaining.length > 0) {
             loadRuleSetData(remaining[0])
             await window.go?.gui?.App?.SetActiveConfig(remaining[0].id)
+          } else {
+            // 配置列表已空，重置为空状态
+            setRuleSet(createEmptyConfig())
+            setCurrentRuleSetId(0)
+            setCurrentRuleSetName('')
+            setCurrentDescription('')
+            setActiveConfigId(null)
+            updateDirty(false)
           }
         }
         toast({ variant: 'success', title: '配置已删除' })
@@ -793,6 +857,12 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
 
   // 保存配置
   const handleSave = async () => {
+    // 如果在 JSON 模式且有解析错误，阻止保存
+    if (showJson && jsonError) {
+      toast({ variant: 'destructive', title: '无法保存', description: 'JSON 格式错误，请修正后再保存' })
+      return
+    }
+    
     setIsLoading(true)
     try {
       const rulesJson = JSON.stringify(ruleSet)
@@ -935,6 +1005,16 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
 
           {/* 右侧配置详情 */}
           <div className="flex-1 flex flex-col min-h-0 p-4">
+            {/* 空状态 */}
+            {ruleSets.length === 0 ? (
+              <div className="flex-1 flex items-center justify-center text-muted-foreground">
+                <div className="text-center">
+                  <div className="text-lg mb-2">暂无配置</div>
+                  <div className="text-sm mb-4">点击左侧「+」按钮创建第一个配置</div>
+                </div>
+              </div>
+            ) : (
+              <>
             {/* 配置信息栏（可折叠） */}
             <div className="mb-4 pb-3 border-b shrink-0">
               {/* 折叠头部 */}
@@ -967,7 +1047,7 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
                   <Save className="w-4 h-4 mr-1" />
                   {isLoading ? '保存中...' : '保存'}
                 </Button>
-                <Button variant="destructive" size="sm" onClick={handleDeleteCurrentConfig} disabled={ruleSets.length <= 1}>
+                <Button variant="destructive" size="sm" onClick={handleDeleteCurrentConfig}>
                   <Trash2 className="w-4 h-4 mr-1" />
                   删除
                 </Button>
@@ -1009,7 +1089,14 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
                 <Plus className="w-4 h-4 mr-1" />
                 添加规则
               </Button>
-              <Button variant="outline" size="sm" onClick={() => setShowJson(!showJson)}>
+              <Button variant="outline" size="sm" onClick={() => {
+                if (!showJson) {
+                  // 切换到 JSON 模式时，同步最新的 ruleSet
+                  setJsonEditorContent(JSON.stringify(ruleSet, null, 2))
+                  setJsonError(null)
+                }
+                setShowJson(!showJson)
+              }}>
                 <FileJson className="w-4 h-4 mr-1" />
                 {showJson ? '可视化' : 'JSON'}
               </Button>
@@ -1020,18 +1107,38 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
             </div>
 
             {/* 规则编辑区 */}
-            <div className="flex-1 min-h-0 overflow-auto">
+            <div className="flex-1 min-h-0 overflow-auto flex flex-col">
               {showJson ? (
-                <textarea
-                  value={JSON.stringify(ruleSet, null, 2)}
-                  onChange={(e) => {
-                    try {
-                      setRuleSet(JSON.parse(e.target.value))
+                <div className="flex-1 flex flex-col min-h-0">
+                  <textarea
+                    value={jsonEditorContent}
+                    onChange={(e) => {
+                      setJsonEditorContent(e.target.value)
+                      // 尝试解析，更新错误状态
+                      try {
+                        const parsed = JSON.parse(e.target.value)
+                        if (parsed.rules && Array.isArray(parsed.rules)) {
+                          setRuleSet(parsed)
+                          setJsonError(null)
+                        } else {
+                          setJsonError('配置格式错误：缺少 rules 数组')
+                        }
+                      } catch (err) {
+                        setJsonError(`JSON 解析错误：${err instanceof Error ? err.message : String(err)}`)
+                      }
                       updateDirty(true)
-                    } catch {}
-                  }}
-                  className="w-full h-full p-3 rounded-md border bg-background font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
-                />
+                    }}
+                    className={`flex-1 w-full p-3 rounded-md border bg-background font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring ${
+                      jsonError ? 'border-destructive' : ''
+                    }`}
+                    spellCheck={false}
+                  />
+                  {jsonError && (
+                    <div className="mt-2 p-2 text-sm text-destructive bg-destructive/10 rounded-md">
+                      {jsonError}
+                    </div>
+                  )}
+                </div>
               ) : (
                 <RuleListEditor
                   rules={ruleSet.rules}
@@ -1039,6 +1146,8 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
                 />
               )}
             </div>
+              </>
+            )}
           </div>
         </>
       )}
@@ -1053,8 +1162,13 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
               <Button variant="outline" onClick={() => setConfirmDialog(null)}>
                 取消
               </Button>
+              {confirmDialog.showSaveOption && confirmDialog.onSave && (
+                <Button variant="default" onClick={confirmDialog.onSave}>
+                  保存
+                </Button>
+              )}
               <Button variant="destructive" onClick={confirmDialog.onConfirm}>
-                确定
+                {confirmDialog.confirmText || '确定'}
               </Button>
             </div>
           </div>

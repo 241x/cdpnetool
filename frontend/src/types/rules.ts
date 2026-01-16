@@ -1,14 +1,10 @@
 // 规则配置类型定义 (v2)
 // 与后端 pkg/rulespec/types.go 保持一致
 
-// ==================== 基础类型 ====================
-
 export type RuleID = string
 
 // 生命周期阶段
 export type Stage = 'request' | 'response'
-
-// ==================== 条件类型 ====================
 
 // V2 细粒度条件类型（25种）
 export type ConditionType =
@@ -54,14 +50,10 @@ export interface Condition {
   path?: string          // bodyJsonPath
 }
 
-// ==================== 匹配结构 ====================
-
 export interface Match {
   allOf?: Condition[]    // AND 逻辑
   anyOf?: Condition[]    // OR 逻辑
 }
-
-// ==================== 行为类型 ====================
 
 // V2 细粒度行为类型（15种）
 export type ActionType =
@@ -111,8 +103,6 @@ export interface Action {
   bodyEncoding?: BodyEncoding   // block
 }
 
-// ==================== 规则结构 ====================
-
 export interface Rule {
   id: RuleID
   name: string
@@ -123,30 +113,28 @@ export interface Rule {
   actions: Action[]
 }
 
-// ==================== 配置结构 ====================
-
 // 配置版本常量
 export const DEFAULT_CONFIG_VERSION = '1.0'
 
 // 配置结构（完整版）
 export interface Config {
-  id?: string            // 配置 ID（新建时可省略）
-  name?: string          // 配置名称（在 UI 中单独管理）
-  version: string        // 配置格式版本
-  description?: string   // 配置描述
-  settings?: Record<string, any>  // 预留设置项
-  rules: Rule[]          // 规则列表
+  id?: string                     // 配置 ID（新建时可省略）
+  name?: string                   // 配置名称（在 UI 中单独管理）
+  version: string                 // 配置格式版本
+  description: string             // 配置描述
+  settings: Record<string, any>   // 预留设置项
+  rules: Rule[]                   // 规则列表
 }
 
-// 创建空配置
+// 创建空配置（完整字段）
 export function createEmptyConfig(): Config {
   return {
     version: DEFAULT_CONFIG_VERSION,
+    description: '',
+    settings: {},
     rules: []
   }
 }
-
-// ==================== 资源类型常量 ====================
 
 export const RESOURCE_TYPES = [
   'document',
@@ -165,8 +153,6 @@ export type ResourceType = typeof RESOURCE_TYPES[number]
 
 // HTTP 方法常量
 export const HTTP_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'] as const
-
-// ==================== 条件类型分组 ====================
 
 export const CONDITION_GROUPS = {
   url: ['urlEquals', 'urlPrefix', 'urlSuffix', 'urlContains', 'urlRegex'],
@@ -236,8 +222,6 @@ export const CONDITION_TYPE_SHORT_LABELS: Record<ConditionType, string> = {
   bodyJsonPath: 'JSON Path'
 }
 
-// ==================== 行为类型分组 ====================
-
 // 请求阶段可用行为
 export const REQUEST_ACTIONS: ActionType[] = [
   'setUrl', 'setMethod', 'setHeader', 'removeHeader',
@@ -273,8 +257,6 @@ export const ACTION_TYPE_LABELS: Record<ActionType, string> = {
 
 // 终结性行为
 export const TERMINAL_ACTIONS: ActionType[] = ['block']
-
-// ==================== 辅助函数 ====================
 
 // 创建空条件
 export function createEmptyCondition(type: ConditionType = 'urlPrefix'): Condition {
