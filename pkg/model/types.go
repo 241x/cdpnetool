@@ -60,16 +60,20 @@ type MatchedEvent struct {
 
 // RuleMatch 规则匹配信息
 type RuleMatch struct {
-	RuleID   string `json:"ruleId"`
-	RuleName string `json:"ruleName"`
+	RuleID   string   `json:"ruleId"`
+	RuleName string   `json:"ruleName"`
+	Actions  []string `json:"actions"` // 实际执行的 action 类型列表
 }
 
 // RequestResponseData 请求/响应数据
 type RequestResponseData struct {
-	URL        string            `json:"url,omitempty"`
-	Headers    map[string]string `json:"headers,omitempty"`
-	Body       string            `json:"body,omitempty"`
-	StatusCode int               `json:"statusCode,omitempty"`
+	URL          string            `json:"url,omitempty"`
+	Method       string            `json:"method,omitempty"`
+	Headers      map[string]string `json:"headers,omitempty"`
+	Body         string            `json:"body,omitempty"`
+	PostData     string            `json:"postData,omitempty"` // POST 数据
+	StatusCode   int               `json:"statusCode,omitempty"`
+	ResourceType string            `json:"resourceType,omitempty"` // document/xhr/script/image等
 }
 
 // UnmatchedEvent 未匹配的请求事件（仅内存，不存数据库）

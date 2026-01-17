@@ -75,20 +75,32 @@ func (m *Manager) captureOriginalData(ts *targetSession, ev *fetch.RequestPaused
 
 	if stage == rulespec.StageRequest {
 		data.URL = ev.Request.URL
+		data.Method = ev.Request.Method
+		// 资源类型
+		if ev.ResourceType != "" {
+			data.ResourceType = string(ev.ResourceType)
+		}
 		// 解析请求头
 		_ = json.Unmarshal(ev.Request.Headers, &data.Headers)
 		// 获取请求体
 		if len(ev.Request.PostDataEntries) > 0 {
 			for _, entry := range ev.Request.PostDataEntries {
 				if entry.Bytes != nil {
-					data.Body += *entry.Bytes
+					data.PostData += *entry.Bytes
 				}
 			}
+			data.Body = data.PostData // Body 和 PostData 同步
 		} else if ev.Request.PostData != nil {
-			data.Body = *ev.Request.PostData
+			data.PostData = *ev.Request.PostData
+			data.Body = data.PostData
 		}
 	} else {
 		// 响应阶段
+		data.URL = ev.Request.URL
+		data.Method = ev.Request.Method
+		if ev.ResourceType != "" {
+			data.ResourceType = string(ev.ResourceType)
+		}
 		if ev.ResponseStatusCode != nil {
 			data.StatusCode = *ev.ResponseStatusCode
 		}
@@ -107,9 +119,15 @@ func (m *Manager) captureOriginalData(ts *targetSession, ev *fetch.RequestPaused
 func buildRuleMatches(matchedRules []*rules.MatchedRule) []model.RuleMatch {
 	matches := make([]model.RuleMatch, len(matchedRules))
 	for i, mr := range matchedRules {
+		// 收集实际执行的 action 类型
+		actionTypes := make([]string, 0, len(mr.Rule.Actions))
+		for _, action := range mr.Rule.Actions {
+			actionTypes = append(actionTypes, string(action.Type))
+		}
 		matches[i] = model.RuleMatch{
 			RuleID:   mr.Rule.ID,
 			RuleName: mr.Rule.Name,
+			Actions:  actionTypes,
 		}
 	}
 	return matches
@@ -239,9 +257,12 @@ func (m *Manager) executeResponseStageWithTracking(
 // captureModifiedRequestData 捕获修改后的请求数据
 func (m *Manager) captureModifiedRequestData(original model.RequestResponseData, mut *RequestMutation) model.RequestResponseData {
 	modified := model.RequestResponseData{
-		URL:     original.URL,
-		Headers: make(map[string]string),
-		Body:    original.Body,
+		URL:          original.URL,
+		Method:       original.Method,
+		ResourceType: original.ResourceType,
+		Headers:      make(map[string]string),
+		Body:         original.Body,
+		PostData:     original.PostData,
 	}
 
 	// 复制原始 headers
@@ -265,6 +286,7 @@ func (m *Manager) captureModifiedRequestData(original model.RequestResponseData,
 	// 应用 body 修改
 	if mut.Body != nil {
 		modified.Body = *mut.Body
+		modified.PostData = *mut.Body // PostData 同步
 	}
 
 	return modified
@@ -273,9 +295,12 @@ func (m *Manager) captureModifiedRequestData(original model.RequestResponseData,
 // captureModifiedResponseData 捕获修改后的响应数据
 func (m *Manager) captureModifiedResponseData(original model.RequestResponseData, mut *ResponseMutation, finalBody string) model.RequestResponseData {
 	modified := model.RequestResponseData{
-		StatusCode: original.StatusCode,
-		Headers:    make(map[string]string),
-		Body:       finalBody,
+		URL:          original.URL,
+		Method:       original.Method,
+		ResourceType: original.ResourceType,
+		StatusCode:   original.StatusCode,
+		Headers:      make(map[string]string),
+		Body:         finalBody,
 	}
 
 	// 复制原始 headers

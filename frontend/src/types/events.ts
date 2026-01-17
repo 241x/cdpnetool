@@ -2,9 +2,13 @@
 
 // ========== 请求响应数据 ==========
 export interface RequestResponseData {
+  url?: string
+  method?: string
   headers: Record<string, string>
   body: string
-  statusCode?: number  // 仅响应阶段有
+  postData?: string      // POST 数据
+  statusCode?: number    // 仅响应阶段有
+  resourceType?: string  // document/xhr/script/image等
 }
 
 // ========== 规则匹配信息 ==========

@@ -342,30 +342,39 @@ function MatchedEventItem({ event, isExpanded, onToggleExpand }: MatchedEventIte
 
       {/* 展开详情 */}
       {isExpanded && (
-        <div className="border-t p-3 space-y-3 text-sm">
+        <div className="border-t p-3 space-y-4 text-sm">
           {/* 基本信息 */}
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <span className="text-muted-foreground">Target:</span>
-              <span className="ml-2 font-mono text-xs">{event.target.slice(0, 20)}...</span>
-            </div>
-            {event.statusCode && (
+          <div>
+            <div className="font-medium mb-2 text-xs text-muted-foreground uppercase">基本信息</div>
+            <div className="grid grid-cols-3 gap-2 text-xs">
               <div>
-                <span className="text-muted-foreground">Status:</span>
-                <span className={`ml-2 font-mono ${
-                  event.statusCode >= 400 ? 'text-red-500' : 
-                  event.statusCode >= 300 ? 'text-yellow-500' : 'text-green-500'
-                }`}>
-                  {event.statusCode}
-                </span>
+                <span className="text-muted-foreground">Target:</span>
+                <span className="ml-2 font-mono">{event.target.slice(0, 16)}...</span>
               </div>
-            )}
+              {event.original?.resourceType && (
+                <div>
+                  <span className="text-muted-foreground">Type:</span>
+                  <span className="ml-2 font-mono">{event.original.resourceType}</span>
+                </div>
+              )}
+              {(event.statusCode || 0) > 0 && (
+                <div>
+                  <span className="text-muted-foreground">Status:</span>
+                  <span className={`ml-2 font-mono ${
+                    (event.statusCode || 0) >= 400 ? 'text-red-500' : 
+                    (event.statusCode || 0) >= 300 ? 'text-yellow-500' : 'text-green-500'
+                  }`}>
+                    {event.statusCode}
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* URL */}
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">URL</span>
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <span className="font-medium text-xs text-muted-foreground uppercase">URL</span>
               <Button variant="ghost" size="sm" onClick={handleCopyUrl} className="h-6 px-2">
                 {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
               </Button>
@@ -376,71 +385,204 @@ function MatchedEventItem({ event, isExpanded, onToggleExpand }: MatchedEventIte
           </div>
 
           {/* 匹配的规则 */}
-          <div className="space-y-1">
-            <span className="text-muted-foreground">匹配规则</span>
-            <div className="space-y-1">
-              {event.matchedRules.map((rule, idx) => (
-                <div key={idx} className="p-2 bg-muted rounded text-xs flex items-center gap-2">
-                  <span className="font-medium">{rule.ruleName}</span>
-                  <span className="text-muted-foreground">→</span>
-                  <div className="flex gap-1 flex-wrap">
-                    {rule.actions.map((action, i) => (
-                      <Badge key={i} variant="secondary" className="text-xs">{action}</Badge>
-                    ))}
+          {event.matchedRules && event.matchedRules.length > 0 && (
+            <div>
+              <div className="font-medium mb-2 text-xs text-muted-foreground uppercase">匹配规则</div>
+              <div className="space-y-1">
+                {event.matchedRules.map((rule, idx) => (
+                  <div key={idx} className="p-2 bg-muted rounded text-xs flex items-center gap-2">
+                    <span className="font-medium">{rule.ruleName || '未知规则'}</span>
+                    <span className="text-muted-foreground">→</span>
+                    <div className="flex gap-1 flex-wrap">
+                      {(rule.actions || []).map((action, i) => (
+                        <Badge key={i} variant="secondary" className="text-xs">{action}</Badge>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* 原始数据 vs 修改后数据 */}
-          <div className="grid grid-cols-2 gap-3">
-            {/* 原始 Headers */}
-            <div className="space-y-1">
-              <span className="text-muted-foreground">原始 Headers</span>
-              <div className="p-2 bg-muted rounded font-mono text-xs max-h-32 overflow-auto">
-                {Object.keys(event.original.headers).length > 0 ? (
-                  Object.entries(event.original.headers).map(([key, value]) => (
-                    <div key={key}>
-                      <span className="text-primary">{key}:</span> {value}
+          {/* 请求/响应信息（根据 stage 分开展示） */}
+          {event.stage === 'request' && event.original && event.modified && (
+            <div>
+              <div className="font-medium mb-2 text-xs text-muted-foreground uppercase">请求信息</div>
+              <div className="grid grid-cols-2 gap-3">
+                {/* 原始请求 */}
+                <div className="space-y-2">
+                  <div className="text-xs font-medium text-muted-foreground">原始</div>
+                  
+                  {/* URL */}
+                  {event.original.url && (
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">URL</div>
+                      <div className="p-2 bg-muted rounded font-mono text-xs break-all max-h-16 overflow-auto">
+                        {event.original.url}
+                      </div>
                     </div>
-                  ))
-                ) : (
-                  <span className="text-muted-foreground">（无）</span>
-                )}
-              </div>
-            </div>
+                  )}
 
-            {/* 修改后 Headers */}
-            <div className="space-y-1">
-              <span className="text-muted-foreground">修改后 Headers</span>
-              <div className="p-2 bg-muted rounded font-mono text-xs max-h-32 overflow-auto">
-                {Object.keys(event.modified.headers).length > 0 ? (
-                  Object.entries(event.modified.headers).map(([key, value]) => (
-                    <div key={key}>
-                      <span className="text-primary">{key}:</span> {value}
+                  {/* Headers */}
+                  <div>
+                    <div className="text-xs text-muted-foreground mb-1">Headers</div>
+                    <div className="p-2 bg-muted rounded font-mono text-xs max-h-32 overflow-auto">
+                      {event.original.headers && Object.keys(event.original.headers).length > 0 ? (
+                        Object.entries(event.original.headers).map(([key, value]) => (
+                          <div key={key} className="truncate">
+                            <span className="text-primary">{key}:</span> {value}
+                          </div>
+                        ))
+                      ) : (
+                        <span className="text-muted-foreground">（无）</span>
+                      )}
                     </div>
-                  ))
-                ) : (
-                  <span className="text-muted-foreground">（无）</span>
-                )}
-              </div>
-            </div>
-          </div>
+                  </div>
 
-          {/* Body 对比 */}
-          {(event.original.body || event.modified.body) && (
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <span className="text-muted-foreground">原始 Body</span>
-                <div className="p-2 bg-muted rounded font-mono text-xs max-h-32 overflow-auto whitespace-pre-wrap">
-                  {event.original.body || <span className="text-muted-foreground">（空）</span>}
+                  {/* PostData/Body */}
+                  {(event.original.postData || event.original.body) && (
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">Body</div>
+                      <div className="p-2 bg-muted rounded font-mono text-xs max-h-32 overflow-auto whitespace-pre-wrap">
+                        {event.original.postData || event.original.body || <span className="text-muted-foreground">（空）</span>}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 修改后请求 */}
+                <div className="space-y-2">
+                  <div className="text-xs font-medium text-muted-foreground">修改后</div>
+                  
+                  {/* URL */}
+                  {event.modified.url && (
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">URL</div>
+                      <div className="p-2 bg-muted rounded font-mono text-xs break-all max-h-16 overflow-auto">
+                        {event.modified.url}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Headers */}
+                  <div>
+                    <div className="text-xs text-muted-foreground mb-1">Headers</div>
+                    <div className="p-2 bg-muted rounded font-mono text-xs max-h-32 overflow-auto">
+                      {event.modified.headers && Object.keys(event.modified.headers).length > 0 ? (
+                        Object.entries(event.modified.headers).map(([key, value]) => (
+                          <div key={key} className="truncate">
+                            <span className="text-primary">{key}:</span> {value}
+                          </div>
+                        ))
+                      ) : (
+                        <span className="text-muted-foreground">（无）</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* PostData/Body */}
+                  {(event.modified.postData || event.modified.body) && (
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">Body</div>
+                      <div className="p-2 bg-muted rounded font-mono text-xs max-h-32 overflow-auto whitespace-pre-wrap">
+                        {event.modified.postData || event.modified.body || <span className="text-muted-foreground">（空）</span>}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
-              <div className="space-y-1">
-                <span className="text-muted-foreground">修改后 Body</span>
-                <div className="p-2 bg-muted rounded font-mono text-xs max-h-32 overflow-auto whitespace-pre-wrap">
-                  {event.modified.body || <span className="text-muted-foreground">（空）</span>}
+            </div>
+          )}
+
+          {/* 响应信息 */}
+          {event.stage === 'response' && event.original && event.modified && (
+            <div>
+              <div className="font-medium mb-2 text-xs text-muted-foreground uppercase">响应信息</div>
+              <div className="grid grid-cols-2 gap-3">
+                {/* 原始响应 */}
+                <div className="space-y-2">
+                  <div className="text-xs font-medium text-muted-foreground">原始</div>
+                  
+                  {/* Status Code */}
+                  {(event.original.statusCode || 0) > 0 && (
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">Status Code</div>
+                      <div className="p-2 bg-muted rounded font-mono text-xs">
+                        <span className={(event.original.statusCode || 0) >= 400 ? 'text-red-500' : (event.original.statusCode || 0) >= 300 ? 'text-yellow-500' : 'text-green-500'}>
+                          {event.original.statusCode}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Headers */}
+                  <div>
+                    <div className="text-xs text-muted-foreground mb-1">Headers</div>
+                    <div className="p-2 bg-muted rounded font-mono text-xs max-h-32 overflow-auto">
+                      {event.original.headers && Object.keys(event.original.headers).length > 0 ? (
+                        Object.entries(event.original.headers).map(([key, value]) => (
+                          <div key={key} className="truncate">
+                            <span className="text-primary">{key}:</span> {value}
+                          </div>
+                        ))
+                      ) : (
+                        <span className="text-muted-foreground">（无）</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Body */}
+                  {event.original.body && (
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">Body</div>
+                      <div className="p-2 bg-muted rounded font-mono text-xs max-h-32 overflow-auto whitespace-pre-wrap">
+                        {event.original.body || <span className="text-muted-foreground">（空）</span>}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 修改后响应 */}
+                <div className="space-y-2">
+                  <div className="text-xs font-medium text-muted-foreground">修改后</div>
+                  
+                  {/* Status Code */}
+                  {(event.modified.statusCode || 0) > 0 && (
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">Status Code</div>
+                      <div className="p-2 bg-muted rounded font-mono text-xs">
+                        <span className={(event.modified.statusCode || 0) >= 400 ? 'text-red-500' : (event.modified.statusCode || 0) >= 300 ? 'text-yellow-500' : 'text-green-500'}>
+                          {event.modified.statusCode}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Headers */}
+                  <div>
+                    <div className="text-xs text-muted-foreground mb-1">Headers</div>
+                    <div className="p-2 bg-muted rounded font-mono text-xs max-h-32 overflow-auto">
+                      {event.modified.headers && Object.keys(event.modified.headers).length > 0 ? (
+                        Object.entries(event.modified.headers).map(([key, value]) => (
+                          <div key={key} className="truncate">
+                            <span className="text-primary">{key}:</span> {value}
+                          </div>
+                        ))
+                      ) : (
+                        <span className="text-muted-foreground">（无）</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Body */}
+                  {event.modified.body && (
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">Body</div>
+                      <div className="p-2 bg-muted rounded font-mono text-xs max-h-32 overflow-auto whitespace-pre-wrap">
+                        {event.modified.body || <span className="text-muted-foreground">（空）</span>}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
