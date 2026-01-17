@@ -68,19 +68,35 @@ export namespace gui {
 		    return a;
 		}
 	}
-	export class EventHistoryResult {
-	    events: storage.InterceptEventRecord[];
+	export class LaunchBrowserResult {
+	    devToolsUrl: string;
+	    success: boolean;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new LaunchBrowserResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.devToolsUrl = source["devToolsUrl"];
+	        this.success = source["success"];
+	        this.error = source["error"];
+	    }
+	}
+	export class MatchedEventHistoryResult {
+	    events: storage.MatchedEventRecord[];
 	    total: number;
 	    success: boolean;
 	    error?: string;
 	
 	    static createFrom(source: any = {}) {
-	        return new EventHistoryResult(source);
+	        return new MatchedEventHistoryResult(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.events = this.convertValues(source["events"], storage.InterceptEventRecord);
+	        this.events = this.convertValues(source["events"], storage.MatchedEventRecord);
 	        this.total = source["total"];
 	        this.success = source["success"];
 	        this.error = source["error"];
@@ -103,56 +119,6 @@ export namespace gui {
 		    }
 		    return a;
 		}
-	}
-	export class EventStatsResult {
-	    stats?: storage.EventStats;
-	    success: boolean;
-	    error?: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new EventStatsResult(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.stats = this.convertValues(source["stats"], storage.EventStats);
-	        this.success = source["success"];
-	        this.error = source["error"];
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
-	export class LaunchBrowserResult {
-	    devToolsUrl: string;
-	    success: boolean;
-	    error?: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new LaunchBrowserResult(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.devToolsUrl = source["devToolsUrl"];
-	        this.success = source["success"];
-	        this.error = source["error"];
-	    }
 	}
 	export class NewConfigResult {
 	    config?: storage.ConfigRecord;
@@ -412,37 +378,24 @@ export namespace storage {
 		    return a;
 		}
 	}
-	export class EventStats {
-	    total: number;
-	    byType: Record<string, number>;
-	
-	    static createFrom(source: any = {}) {
-	        return new EventStats(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.total = source["total"];
-	        this.byType = source["byType"];
-	    }
-	}
-	export class InterceptEventRecord {
+	export class MatchedEventRecord {
 	    id: number;
 	    sessionId: string;
 	    targetId: string;
-	    type: string;
 	    url: string;
 	    method: string;
 	    stage: string;
 	    statusCode: number;
-	    ruleId?: string;
-	    error: string;
+	    finalResult: string;
+	    matchedRulesJson: string;
+	    originalJson: string;
+	    modifiedJson: string;
 	    timestamp: number;
 	    // Go type: time
 	    createdAt: any;
 	
 	    static createFrom(source: any = {}) {
-	        return new InterceptEventRecord(source);
+	        return new MatchedEventRecord(source);
 	    }
 	
 	    constructor(source: any = {}) {
@@ -450,13 +403,14 @@ export namespace storage {
 	        this.id = source["id"];
 	        this.sessionId = source["sessionId"];
 	        this.targetId = source["targetId"];
-	        this.type = source["type"];
 	        this.url = source["url"];
 	        this.method = source["method"];
 	        this.stage = source["stage"];
 	        this.statusCode = source["statusCode"];
-	        this.ruleId = source["ruleId"];
-	        this.error = source["error"];
+	        this.finalResult = source["finalResult"];
+	        this.matchedRulesJson = source["matchedRulesJson"];
+	        this.originalJson = source["originalJson"];
+	        this.modifiedJson = source["modifiedJson"];
 	        this.timestamp = source["timestamp"];
 	        this.createdAt = this.convertValues(source["createdAt"], null);
 	    }

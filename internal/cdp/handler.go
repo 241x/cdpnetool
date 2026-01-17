@@ -2,6 +2,7 @@ package cdp
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/mafredri/cdp/protocol/fetch"
@@ -29,16 +30,6 @@ func (m *Manager) handle(ts *targetSession, ev *fetch.RequestPausedReply) {
 		statusCode = *ev.ResponseStatusCode
 	}
 
-	// 事件：拦截开始
-	m.sendEvent(model.Event{
-		Type:       "intercepted",
-		Target:     ts.id,
-		URL:        ev.Request.URL,
-		Method:     ev.Request.Method,
-		Stage:      string(stage),
-		StatusCode: statusCode,
-	})
-
 	m.log.Debug("开始处理拦截事件", "stage", stage, "url", ev.Request.URL, "method", ev.Request.Method)
 
 	// 构建评估上下文（基于请求信息）
@@ -46,11 +37,16 @@ func (m *Manager) handle(ts *targetSession, ev *fetch.RequestPausedReply) {
 
 	// 评估匹配规则
 	if m.engine == nil {
+		// 无引擎，发送未匹配事件并放行
+		m.sendUnmatchedEvent(ts.id, ev, stage, statusCode)
 		m.executor.ContinueRequest(ctx, ts, ev)
 		return
 	}
+
 	matchedRules := m.engine.EvalForStage(evalCtx, stage)
 	if len(matchedRules) == 0 {
+		// 未匹配，发送未匹配事件并放行
+		m.sendUnmatchedEvent(ts.id, ev, stage, statusCode)
 		if stage == rulespec.StageRequest {
 			m.executor.ContinueRequest(ctx, ts, ev)
 		} else {
@@ -60,17 +56,76 @@ func (m *Manager) handle(ts *targetSession, ev *fetch.RequestPausedReply) {
 		return
 	}
 
+	// 有匹配规则 - 捕获原始数据
+	original := m.captureOriginalData(ts, ev, stage)
+
 	// 执行所有匹配规则的行为（aggregate 模式）
 	if stage == rulespec.StageRequest {
-		m.executeRequestStage(ctx, ts, ev, matchedRules, start)
+		m.executeRequestStageWithTracking(ctx, ts, ev, matchedRules, original, start)
 	} else {
-		m.executeResponseStage(ctx, ts, ev, matchedRules, start)
+		m.executeResponseStageWithTracking(ctx, ts, ev, matchedRules, original, start)
 	}
 }
 
-// executeRequestStage 执行请求阶段的行为
-func (m *Manager) executeRequestStage(ctx context.Context, ts *targetSession, ev *fetch.RequestPausedReply, matchedRules []*rules.MatchedRule, start time.Time) {
+// captureOriginalData 捕获原始请求/响应数据
+func (m *Manager) captureOriginalData(ts *targetSession, ev *fetch.RequestPausedReply, stage rulespec.Stage) model.RequestResponseData {
+	data := model.RequestResponseData{
+		Headers: make(map[string]string),
+	}
+
+	if stage == rulespec.StageRequest {
+		data.URL = ev.Request.URL
+		// 解析请求头
+		_ = json.Unmarshal(ev.Request.Headers, &data.Headers)
+		// 获取请求体
+		if len(ev.Request.PostDataEntries) > 0 {
+			for _, entry := range ev.Request.PostDataEntries {
+				if entry.Bytes != nil {
+					data.Body += *entry.Bytes
+				}
+			}
+		} else if ev.Request.PostData != nil {
+			data.Body = *ev.Request.PostData
+		}
+	} else {
+		// 响应阶段
+		if ev.ResponseStatusCode != nil {
+			data.StatusCode = *ev.ResponseStatusCode
+		}
+		// 响应头
+		for _, h := range ev.ResponseHeaders {
+			data.Headers[h.Name] = h.Value
+		}
+		// 响应体需要单独获取
+		data.Body, _ = m.executor.FetchResponseBody(ts.ctx, ts, ev.RequestID)
+	}
+
+	return data
+}
+
+// buildRuleMatches 构建规则匹配信息列表
+func buildRuleMatches(matchedRules []*rules.MatchedRule) []model.RuleMatch {
+	matches := make([]model.RuleMatch, len(matchedRules))
+	for i, mr := range matchedRules {
+		matches[i] = model.RuleMatch{
+			RuleID:   mr.Rule.ID,
+			RuleName: mr.Rule.Name,
+		}
+	}
+	return matches
+}
+
+// executeRequestStageWithTracking 执行请求阶段的行为并跟踪变更
+func (m *Manager) executeRequestStageWithTracking(
+	ctx context.Context,
+	ts *targetSession,
+	ev *fetch.RequestPausedReply,
+	matchedRules []*rules.MatchedRule,
+	original model.RequestResponseData,
+	start time.Time,
+) {
 	var aggregatedMut *RequestMutation
+	ruleMatches := buildRuleMatches(matchedRules)
 
 	for _, matched := range matchedRules {
 		rule := matched.Rule
@@ -86,16 +141,9 @@ func (m *Manager) executeRequestStage(ctx context.Context, ts *targetSession, ev
 
 		// 检查是否是终结性行为（block）
 		if mut.Block != nil {
-			// 使用 ActionExecutor 的 ApplyRequestMutation 来应用 block
 			m.executor.ApplyRequestMutation(ctx, ts, ev, mut)
-			m.sendEvent(model.Event{
-				Type:   "blocked",
-				Rule:   (*model.RuleID)(&rule.ID),
-				Target: ts.id,
-				URL:    ev.Request.URL,
-				Method: ev.Request.Method,
-				Stage:  string(rulespec.StageRequest),
-			})
+			// 发送 blocked 事件
+			m.sendMatchedEvent(ts.id, ev, rulespec.StageRequest, "blocked", ruleMatches, original, original)
 			m.log.Info("请求被阻止", "rule", rule.ID, "url", ev.Request.URL)
 			return
 		}
@@ -109,26 +157,36 @@ func (m *Manager) executeRequestStage(ctx context.Context, ts *targetSession, ev
 	}
 
 	// 应用聚合后的变更
+	var finalResult string
+	var modified model.RequestResponseData
+
 	if aggregatedMut != nil && hasRequestMutation(aggregatedMut) {
 		m.executor.ApplyRequestMutation(ctx, ts, ev, aggregatedMut)
-		m.sendEvent(model.Event{
-			Type:   "mutated",
-			Target: ts.id,
-			URL:    ev.Request.URL,
-			Method: ev.Request.Method,
-			Stage:  string(rulespec.StageRequest),
-		})
+		finalResult = "modified"
+		modified = m.captureModifiedRequestData(original, aggregatedMut)
 	} else {
 		m.executor.ContinueRequest(ctx, ts, ev)
+		finalResult = "passed"
+		modified = original
 	}
-	m.log.Debug("请求阶段处理完成", "duration", time.Since(start))
+
+	// 发送匹配事件
+	m.sendMatchedEvent(ts.id, ev, rulespec.StageRequest, finalResult, ruleMatches, original, modified)
+	m.log.Debug("请求阶段处理完成", "result", finalResult, "duration", time.Since(start))
 }
 
-// executeResponseStage 执行响应阶段的行为
-func (m *Manager) executeResponseStage(ctx context.Context, ts *targetSession, ev *fetch.RequestPausedReply, matchedRules []*rules.MatchedRule, start time.Time) {
-	// 获取响应体
-	responseBody, _ := m.executor.FetchResponseBody(ctx, ts, ev.RequestID)
+// executeResponseStageWithTracking 执行响应阶段的行为并跟踪变更
+func (m *Manager) executeResponseStageWithTracking(
+	ctx context.Context,
+	ts *targetSession,
+	ev *fetch.RequestPausedReply,
+	matchedRules []*rules.MatchedRule,
+	original model.RequestResponseData,
+	start time.Time,
+) {
+	responseBody := original.Body
 	var aggregatedMut *ResponseMutation
+	ruleMatches := buildRuleMatches(matchedRules)
 
 	for _, matched := range matchedRules {
 		rule := matched.Rule
@@ -156,24 +214,89 @@ func (m *Manager) executeResponseStage(ctx context.Context, ts *targetSession, e
 	}
 
 	// 应用聚合后的变更
+	var finalResult string
+	var modified model.RequestResponseData
+
 	if aggregatedMut != nil && hasResponseMutation(aggregatedMut) {
 		// 确保 Body 是最新的
 		if aggregatedMut.Body == nil && responseBody != "" {
 			aggregatedMut.Body = &responseBody
 		}
 		m.executor.ApplyResponseMutation(ctx, ts, ev, aggregatedMut)
-		m.sendEvent(model.Event{
-			Type:       "mutated",
-			Target:     ts.id,
-			URL:        ev.Request.URL,
-			Method:     ev.Request.Method,
-			Stage:      string(rulespec.StageResponse),
-			StatusCode: getStatusCode(ev),
-		})
+		finalResult = "modified"
+		modified = m.captureModifiedResponseData(original, aggregatedMut, responseBody)
 	} else {
 		m.executor.ContinueResponse(ctx, ts, ev)
+		finalResult = "passed"
+		modified = original
 	}
-	m.log.Debug("响应阶段处理完成", "duration", time.Since(start))
+
+	// 发送匹配事件
+	m.sendMatchedEvent(ts.id, ev, rulespec.StageResponse, finalResult, ruleMatches, original, modified)
+	m.log.Debug("响应阶段处理完成", "result", finalResult, "duration", time.Since(start))
+}
+
+// captureModifiedRequestData 捕获修改后的请求数据
+func (m *Manager) captureModifiedRequestData(original model.RequestResponseData, mut *RequestMutation) model.RequestResponseData {
+	modified := model.RequestResponseData{
+		URL:     original.URL,
+		Headers: make(map[string]string),
+		Body:    original.Body,
+	}
+
+	// 复制原始 headers
+	for k, v := range original.Headers {
+		modified.Headers[k] = v
+	}
+
+	// 应用 URL 修改
+	if mut.URL != nil {
+		modified.URL = *mut.URL
+	}
+
+	// 应用 header 修改
+	for _, h := range mut.RemoveHeaders {
+		delete(modified.Headers, h)
+	}
+	for k, v := range mut.Headers {
+		modified.Headers[k] = v
+	}
+
+	// 应用 body 修改
+	if mut.Body != nil {
+		modified.Body = *mut.Body
+	}
+
+	return modified
+}
+
+// captureModifiedResponseData 捕获修改后的响应数据
+func (m *Manager) captureModifiedResponseData(original model.RequestResponseData, mut *ResponseMutation, finalBody string) model.RequestResponseData {
+	modified := model.RequestResponseData{
+		StatusCode: original.StatusCode,
+		Headers:    make(map[string]string),
+		Body:       finalBody,
+	}
+
+	// 复制原始 headers
+	for k, v := range original.Headers {
+		modified.Headers[k] = v
+	}
+
+	// 应用状态码修改
+	if mut.StatusCode != nil {
+		modified.StatusCode = *mut.StatusCode
+	}
+
+	// 应用 header 修改
+	for _, h := range mut.RemoveHeaders {
+		delete(modified.Headers, h)
+	}
+	for k, v := range mut.Headers {
+		modified.Headers[k] = v
+	}
+
+	return modified
 }
 
 // mergeRequestMutation 合并请求变更
@@ -300,12 +423,66 @@ func (m *Manager) degradeAndContinue(ts *targetSession, ev *fetch.RequestPausedR
 	ctx, cancel := context.WithTimeout(ts.ctx, 1*time.Second)
 	defer cancel()
 	m.executor.ContinueRequest(ctx, ts, ev)
-	m.sendEvent(model.Event{Type: "degraded", Target: ts.id, URL: ev.Request.URL, Method: ev.Request.Method})
+	// 降级时发送未匹配事件
+	stage := rulespec.StageRequest
+	statusCode := 0
+	if ev.ResponseStatusCode != nil {
+		stage = rulespec.StageResponse
+		statusCode = *ev.ResponseStatusCode
+	}
+	m.sendUnmatchedEvent(ts.id, ev, stage, statusCode)
 }
 
-// sendEvent 安全发送事件到通道，自动添加时间戳
-func (m *Manager) sendEvent(evt model.Event) {
-	evt.Timestamp = time.Now().UnixMilli()
+// sendMatchedEvent 发送匹配事件
+func (m *Manager) sendMatchedEvent(
+	target model.TargetID,
+	ev *fetch.RequestPausedReply,
+	stage rulespec.Stage,
+	finalResult string,
+	matchedRules []model.RuleMatch,
+	original, modified model.RequestResponseData,
+) {
+	statusCode := 0
+	if ev.ResponseStatusCode != nil {
+		statusCode = *ev.ResponseStatusCode
+	}
+
+	evt := model.InterceptEvent{
+		IsMatched: true,
+		Matched: &model.MatchedEvent{
+			Target:       target,
+			URL:          ev.Request.URL,
+			Method:       ev.Request.Method,
+			Stage:        string(stage),
+			StatusCode:   statusCode,
+			Timestamp:    time.Now().UnixMilli(),
+			FinalResult:  finalResult,
+			MatchedRules: matchedRules,
+			Original:     original,
+			Modified:     modified,
+		},
+	}
+
+	select {
+	case m.events <- evt:
+	default:
+	}
+}
+
+// sendUnmatchedEvent 发送未匹配事件
+func (m *Manager) sendUnmatchedEvent(target model.TargetID, ev *fetch.RequestPausedReply, stage rulespec.Stage, statusCode int) {
+	evt := model.InterceptEvent{
+		IsMatched: false,
+		Unmatched: &model.UnmatchedEvent{
+			Target:     target,
+			URL:        ev.Request.URL,
+			Method:     ev.Request.Method,
+			Stage:      string(stage),
+			StatusCode: statusCode,
+			Timestamp:  time.Now().UnixMilli(),
+		},
+	}
+
 	select {
 	case m.events <- evt:
 	default:

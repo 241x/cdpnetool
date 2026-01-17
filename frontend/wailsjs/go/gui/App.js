@@ -62,10 +62,6 @@ export function GetCurrentSession() {
   return window['go']['gui']['App']['GetCurrentSession']();
 }
 
-export function GetEventStats() {
-  return window['go']['gui']['App']['GetEventStats']();
-}
-
 export function GetRuleStats(arg1) {
   return window['go']['gui']['App']['GetRuleStats'](arg1);
 }
@@ -98,8 +94,8 @@ export function LoadRules(arg1, arg2) {
   return window['go']['gui']['App']['LoadRules'](arg1, arg2);
 }
 
-export function QueryEventHistory(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
-  return window['go']['gui']['App']['QueryEventHistory'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
+export function QueryMatchedEventHistory(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
+  return window['go']['gui']['App']['QueryMatchedEventHistory'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
 }
 
 export function RenameConfig(arg1, arg2) {

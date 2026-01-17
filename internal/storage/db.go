@@ -106,6 +106,6 @@ func (d *DB) autoMigrate() error {
 	return d.gormDB.AutoMigrate(
 		&Setting{},
 		&ConfigRecord{},
-		&InterceptEventRecord{},
+		&MatchedEventRecord{},
 	)
 }

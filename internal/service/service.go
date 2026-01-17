@@ -24,7 +24,7 @@ type session struct {
 	id     model.SessionID
 	cfg    model.SessionConfig
 	config *rulespec.Config
-	events chan model.Event
+	events chan model.InterceptEvent
 	mgr    *cdp.Manager
 }
 
@@ -59,7 +59,7 @@ func (s *svc) StartSession(cfg model.SessionConfig) (model.SessionID, error) {
 	ses := &session{
 		id:     id,
 		cfg:    cfg,
-		events: make(chan model.Event, 128),
+		events: make(chan model.InterceptEvent, 128),
 	}
 	ses.mgr = cdp.New(cfg.DevToolsURL, ses.events, s.log)
 	ses.mgr.SetConcurrency(cfg.Concurrency)
@@ -224,7 +224,7 @@ func (s *svc) GetRuleStats(id model.SessionID) (model.EngineStats, error) {
 }
 
 // SubscribeEvents 订阅会话事件流
-func (s *svc) SubscribeEvents(id model.SessionID) (<-chan model.Event, error) {
+func (s *svc) SubscribeEvents(id model.SessionID) (<-chan model.InterceptEvent, error) {
 	s.mu.Lock()
 	ses, ok := s.sessions[id]
 	s.mu.Unlock()

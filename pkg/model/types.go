@@ -25,20 +25,6 @@ type EngineStats struct {
 	ByRule  map[RuleID]int64 `json:"byRule"`
 }
 
-// Event 事件
-type Event struct {
-	Type       string    `json:"type"`
-	Session    SessionID `json:"session"`
-	Target     TargetID  `json:"target"`
-	Rule       *RuleID   `json:"rule,omitempty"`
-	URL        string    `json:"url,omitempty"`
-	Method     string    `json:"method,omitempty"`
-	Stage      string    `json:"stage,omitempty"`
-	StatusCode int       `json:"statusCode,omitempty"`
-	Error      string    `json:"error,omitempty"`
-	Timestamp  int64     `json:"timestamp"`
-}
-
 // TargetInfo 目标信息
 type TargetInfo struct {
 	ID        TargetID `json:"id"`
@@ -48,15 +34,61 @@ type TargetInfo struct {
 	IsCurrent bool     `json:"isCurrent"`
 }
 
-// InterceptedRequest 拦截的请求
-type InterceptedRequest struct {
-	RequestID          string
-	Stage              string
-	URL                string
-	Method             string
-	RequestHeaders     map[string]string
-	PostData           *string
-	ResponseStatusCode *int
-	ResponseHeaders    map[string]string
-	ResponseBody       *string
+// ==================== 事件系统 ====================
+
+// MatchedEvent 匹配的请求事件（会存入数据库）
+type MatchedEvent struct {
+	Session    SessionID `json:"session"`
+	Target     TargetID  `json:"target"`
+	URL        string    `json:"url"`
+	Method     string    `json:"method"`
+	Stage      string    `json:"stage"` // request / response
+	StatusCode int       `json:"statusCode,omitempty"`
+	Timestamp  int64     `json:"timestamp"`
+
+	// 最终结果: blocked / modified / passed
+	FinalResult string `json:"finalResult"`
+
+	// 匹配的规则列表
+	MatchedRules []RuleMatch `json:"matchedRules"`
+
+	// 原始数据
+	Original RequestResponseData `json:"original"`
+	// 修改后的数据
+	Modified RequestResponseData `json:"modified"`
+}
+
+// RuleMatch 规则匹配信息
+type RuleMatch struct {
+	RuleID   string `json:"ruleId"`
+	RuleName string `json:"ruleName"`
+}
+
+// RequestResponseData 请求/响应数据
+type RequestResponseData struct {
+	URL        string            `json:"url,omitempty"`
+	Headers    map[string]string `json:"headers,omitempty"`
+	Body       string            `json:"body,omitempty"`
+	StatusCode int               `json:"statusCode,omitempty"`
+}
+
+// UnmatchedEvent 未匹配的请求事件（仅内存，不存数据库）
+type UnmatchedEvent struct {
+	Target     TargetID `json:"target"`
+	URL        string   `json:"url"`
+	Method     string   `json:"method"`
+	Stage      string   `json:"stage"` // request / response
+	StatusCode int      `json:"statusCode,omitempty"`
+	Timestamp  int64    `json:"timestamp"`
+}
+
+// InterceptEvent 统一事件接口（用于通道传输）
+type InterceptEvent struct {
+	IsMatched bool `json:"isMatched"`
+
+	// 匹配事件数据（IsMatched=true 时有效）
+	Matched *MatchedEvent `json:"matched,omitempty"`
+
+	// 未匹配事件数据（IsMatched=false 时有效）
+	Unmatched *UnmatchedEvent `json:"unmatched,omitempty"`
 }

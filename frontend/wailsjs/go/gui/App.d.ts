@@ -32,8 +32,6 @@ export function GetConfig(arg1:number):Promise<gui.ConfigResult>;
 
 export function GetCurrentSession():Promise<string>;
 
-export function GetEventStats():Promise<gui.EventStatsResult>;
-
 export function GetRuleStats(arg1:string):Promise<gui.StatsResult>;
 
 export function GetSetting(arg1:string):Promise<string>;
@@ -50,7 +48,7 @@ export function LoadActiveConfigToSession():Promise<gui.OperationResult>;
 
 export function LoadRules(arg1:string,arg2:string):Promise<gui.OperationResult>;
 
-export function QueryEventHistory(arg1:string,arg2:string,arg3:string,arg4:string,arg5:number,arg6:number,arg7:number,arg8:number):Promise<gui.EventHistoryResult>;
+export function QueryMatchedEventHistory(arg1:string,arg2:string,arg3:string,arg4:string,arg5:number,arg6:number,arg7:number,arg8:number):Promise<gui.MatchedEventHistoryResult>;
 
 export function RenameConfig(arg1:number,arg2:string):Promise<gui.OperationResult>;
 

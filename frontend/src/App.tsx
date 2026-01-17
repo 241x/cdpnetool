@@ -102,9 +102,11 @@ function App() {
     setTargets,
     attachedTargets,
     toggleAttachedTarget,
-    events,
-    addEvent,
-    clearEvents,
+    matchedEvents,
+    unmatchedEvents,
+    addInterceptEvent,
+    clearMatchedEvents,
+    clearUnmatchedEvents,
   } = useSessionStore()
   
   const { isDark, toggle: toggleTheme } = useThemeStore()
@@ -279,15 +281,11 @@ function App() {
     if (window.runtime?.EventsOn) {
       // @ts-ignore
       window.runtime.EventsOn('intercept-event', (event: InterceptEvent) => {
-        // 后端已提供完整事件数据，生成 id 用于前端 key
-        const enrichedEvent: InterceptEvent = {
-          ...event,
-          id: event.id || `${event.timestamp}_${Math.random().toString(36).slice(2)}`,
-        }
-        addEvent(enrichedEvent)
+        // 事件由 store 处理，自动分发到匹配/未匹配列表
+        addInterceptEvent(event)
       })
     }
-  }, [addEvent])
+  }, [addInterceptEvent])
 
   return (
     <div className="h-screen flex flex-col bg-background text-foreground">
@@ -390,7 +388,12 @@ function App() {
 
           <TabsContent value="events" className="flex-1 overflow-hidden m-0 min-h-0 data-[state=active]:flex data-[state=active]:flex-col">
             <div className="h-full overflow-auto p-4">
-              <EventsPanel events={events as InterceptEvent[]} onClear={clearEvents} />
+              <EventsPanel 
+                matchedEvents={matchedEvents} 
+                unmatchedEvents={unmatchedEvents}
+                onClearMatched={clearMatchedEvents}
+                onClearUnmatched={clearUnmatchedEvents}
+              />
             </div>
           </TabsContent>
         </Tabs>

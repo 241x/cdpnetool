@@ -334,9 +334,10 @@ func (a *App) subscribeEvents(sessionID model.SessionID) {
 	for evt := range ch {
 		// 通过 Wails 事件系统推送到前端
 		runtime.EventsEmit(a.ctx, "intercept-event", evt)
-		// 异步写入数据库
-		if a.eventRepo != nil {
-			a.eventRepo.Record(evt)
+		// 只有匹配的事件才写入数据库
+		if evt.IsMatched && evt.Matched != nil && a.eventRepo != nil {
+			evt.Matched.Session = sessionID
+			a.eventRepo.RecordMatched(evt.Matched)
 		}
 	}
 	a.log.Debug("事件订阅已结束", "sessionID", sessionID)
@@ -642,58 +643,36 @@ func (a *App) LoadActiveConfigToSession() OperationResult {
 	return OperationResult{Success: true}
 }
 
-// EventHistoryResult 表示事件历史查询结果。
-type EventHistoryResult struct {
-	Events  []storage.InterceptEventRecord `json:"events"`
-	Total   int64                          `json:"total"`
-	Success bool                           `json:"success"`
-	Error   string                         `json:"error,omitempty"`
+// MatchedEventHistoryResult 表示匹配事件历史查询结果。
+type MatchedEventHistoryResult struct {
+	Events  []storage.MatchedEventRecord `json:"events"`
+	Total   int64                        `json:"total"`
+	Success bool                         `json:"success"`
+	Error   string                       `json:"error,omitempty"`
 }
 
-// QueryEventHistory 根据条件查询事件历史记录。
-func (a *App) QueryEventHistory(sessionID, eventType, url, method string, startTime, endTime int64, offset, limit int) EventHistoryResult {
+// QueryMatchedEventHistory 根据条件查询匹配事件历史记录。
+func (a *App) QueryMatchedEventHistory(sessionID, finalResult, url, method string, startTime, endTime int64, offset, limit int) MatchedEventHistoryResult {
 	if a.eventRepo == nil {
 		a.log.Error("查询事件历史失败: 事件仓库未初始化")
-		return EventHistoryResult{Success: false, Error: "事件仓库未初始化"}
+		return MatchedEventHistoryResult{Success: false, Error: "事件仓库未初始化"}
 	}
 
 	events, total, err := a.eventRepo.Query(storage.QueryOptions{
-		SessionID: sessionID,
-		Type:      eventType,
-		URL:       url,
-		Method:    method,
-		StartTime: startTime,
-		EndTime:   endTime,
-		Offset:    offset,
-		Limit:     limit,
+		SessionID:   sessionID,
+		FinalResult: finalResult,
+		URL:         url,
+		Method:      method,
+		StartTime:   startTime,
+		EndTime:     endTime,
+		Offset:      offset,
+		Limit:       limit,
 	})
 	if err != nil {
 		a.log.Err(err, "查询事件历史失败")
-		return EventHistoryResult{Success: false, Error: err.Error()}
+		return MatchedEventHistoryResult{Success: false, Error: err.Error()}
 	}
-	return EventHistoryResult{Events: events, Total: total, Success: true}
-}
-
-// EventStatsResult 表示事件统计结果。
-type EventStatsResult struct {
-	Stats   *storage.EventStats `json:"stats"`
-	Success bool                `json:"success"`
-	Error   string              `json:"error,omitempty"`
-}
-
-// GetEventStats 获取事件统计信息。
-func (a *App) GetEventStats() EventStatsResult {
-	if a.eventRepo == nil {
-		a.log.Error("获取事件统计失败: 事件仓库未初始化")
-		return EventStatsResult{Success: false, Error: "事件仓库未初始化"}
-	}
-
-	stats, err := a.eventRepo.GetStats()
-	if err != nil {
-		a.log.Err(err, "获取事件统计失败")
-		return EventStatsResult{Success: false, Error: err.Error()}
-	}
-	return EventStatsResult{Stats: stats, Success: true}
+	return MatchedEventHistoryResult{Events: events, Total: total, Success: true}
 }
 
 // CleanupEventHistory 清理指定天数之前的旧事件记录。

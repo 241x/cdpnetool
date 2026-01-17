@@ -3,6 +3,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { 
   Search, 
   X,
@@ -13,46 +14,101 @@ import {
   ArrowRight,
   ArrowLeft,
   Copy,
-  Check
+  Check,
+  CheckCircle,
+  XCircle
 } from 'lucide-react'
-import type { InterceptEvent, EventType } from '@/types/events'
-import { EVENT_TYPE_LABELS, EVENT_TYPE_COLORS } from '@/types/events'
+import type { 
+  MatchedEventWithId, 
+  UnmatchedEventWithId, 
+  FinalResultType 
+} from '@/types/events'
+import { 
+  FINAL_RESULT_LABELS, 
+  FINAL_RESULT_COLORS, 
+  UNMATCHED_COLORS 
+} from '@/types/events'
 
 interface EventsPanelProps {
-  events: InterceptEvent[]
+  matchedEvents: MatchedEventWithId[]
+  unmatchedEvents: UnmatchedEventWithId[]
+  onClearMatched?: () => void
+  onClearUnmatched?: () => void
+}
+
+export function EventsPanel({ 
+  matchedEvents, 
+  unmatchedEvents, 
+  onClearMatched, 
+  onClearUnmatched 
+}: EventsPanelProps) {
+  const [activeTab, setActiveTab] = useState<'matched' | 'unmatched'>('matched')
+
+  const totalMatched = matchedEvents.length
+  const totalUnmatched = unmatchedEvents.length
+
+  return (
+    <div className="h-full flex flex-col">
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'matched' | 'unmatched')} className="flex-1 flex flex-col">
+        <TabsList className="w-fit mb-4">
+          <TabsTrigger value="matched" className="gap-2">
+            <CheckCircle className="w-4 h-4" />
+            匹配请求
+            {totalMatched > 0 && (
+              <Badge variant="secondary" className="ml-1 text-xs">{totalMatched}</Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="unmatched" className="gap-2">
+            <XCircle className="w-4 h-4" />
+            未匹配请求
+            {totalUnmatched > 0 && (
+              <Badge variant="secondary" className="ml-1 text-xs">{totalUnmatched}</Badge>
+            )}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="matched" className="flex-1 m-0 overflow-hidden">
+          <MatchedEventsList events={matchedEvents} onClear={onClearMatched} />
+        </TabsContent>
+
+        <TabsContent value="unmatched" className="flex-1 m-0 overflow-hidden">
+          <UnmatchedEventsList events={unmatchedEvents} onClear={onClearUnmatched} />
+        </TabsContent>
+      </Tabs>
+    </div>
+  )
+}
+
+// ========== 匹配事件列表 ==========
+interface MatchedEventsListProps {
+  events: MatchedEventWithId[]
   onClear?: () => void
 }
 
-export function EventsPanel({ events, onClear }: EventsPanelProps) {
+function MatchedEventsList({ events, onClear }: MatchedEventsListProps) {
   const [search, setSearch] = useState('')
-  const [typeFilter, setTypeFilter] = useState<EventType | 'all'>('all')
+  const [resultFilter, setResultFilter] = useState<FinalResultType | 'all'>('all')
   const [expandedEvent, setExpandedEvent] = useState<string | null>(null)
 
-  // 过滤事件
   const filteredEvents = useMemo(() => {
     return events.filter(evt => {
-      // 类型过滤
-      if (typeFilter !== 'all' && evt.type !== typeFilter) return false
-      
-      // 搜索过滤
+      if (resultFilter !== 'all' && evt.finalResult !== resultFilter) return false
       if (search) {
         const searchLower = search.toLowerCase()
         return (
-          evt.url?.toLowerCase().includes(searchLower) ||
-          evt.method?.toLowerCase().includes(searchLower) ||
-          evt.rule?.toLowerCase().includes(searchLower) ||
-          evt.target?.toLowerCase().includes(searchLower)
+          evt.url.toLowerCase().includes(searchLower) ||
+          evt.method.toLowerCase().includes(searchLower) ||
+          evt.matchedRules.some(r => r.ruleName.toLowerCase().includes(searchLower))
         )
       }
       return true
     })
-  }, [events, search, typeFilter])
+  }, [events, search, resultFilter])
 
-  // 统计各类型数量
-  const typeCounts = useMemo(() => {
+  const resultCounts = useMemo(() => {
     const counts: Record<string, number> = { all: events.length }
     events.forEach(evt => {
-      counts[evt.type] = (counts[evt.type] || 0) + 1
+      counts[evt.finalResult] = (counts[evt.finalResult] || 0) + 1
     })
     return counts
   }, [events])
@@ -60,9 +116,9 @@ export function EventsPanel({ events, onClear }: EventsPanelProps) {
   if (events.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-        <div className="text-4xl mb-4 opacity-50">📡</div>
-        <p>暂无拦截事件</p>
-        <p className="text-sm mt-1">启用拦截后，事件将在此实时显示</p>
+        <div className="text-4xl mb-4 opacity-50">✓</div>
+        <p>暂无匹配事件</p>
+        <p className="text-sm mt-1">匹配规则的请求将在此显示</p>
       </div>
     )
   }
@@ -71,13 +127,12 @@ export function EventsPanel({ events, onClear }: EventsPanelProps) {
     <div className="h-full flex flex-col">
       {/* 工具栏 */}
       <div className="flex items-center gap-2 mb-4">
-        {/* 搜索框 */}
         <div className="relative flex-1 max-w-xs">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="搜索 URL、方法、规则..."
+            placeholder="搜索 URL、方法、规则名..."
             className="pl-9 pr-8"
           />
           {search && (
@@ -90,26 +145,24 @@ export function EventsPanel({ events, onClear }: EventsPanelProps) {
           )}
         </div>
 
-        {/* 类型过滤 */}
         <div className="flex items-center gap-1">
           <Filter className="w-4 h-4 text-muted-foreground" />
           <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value as EventType | 'all')}
+            value={resultFilter}
+            onChange={(e) => setResultFilter(e.target.value as FinalResultType | 'all')}
             className="h-9 px-2 rounded-md border bg-background text-sm"
           >
-            <option value="all">全部 ({typeCounts.all})</option>
-            {Object.entries(EVENT_TYPE_LABELS).map(([type, label]) => (
-              typeCounts[type] > 0 && (
+            <option value="all">全部 ({resultCounts.all})</option>
+            {Object.entries(FINAL_RESULT_LABELS).map(([type, label]) => (
+              resultCounts[type] > 0 && (
                 <option key={type} value={type}>
-                  {label} ({typeCounts[type]})
+                  {label} ({resultCounts[type]})
                 </option>
               )
             ))}
           </select>
         </div>
 
-        {/* 清除按钮 */}
         {onClear && (
           <Button variant="outline" size="sm" onClick={onClear}>
             <Trash2 className="w-4 h-4 mr-1" />
@@ -118,17 +171,14 @@ export function EventsPanel({ events, onClear }: EventsPanelProps) {
         )}
       </div>
 
-      {/* 统计栏 */}
-      <div className="flex items-center gap-4 mb-3 text-sm text-muted-foreground">
-        <span>共 {filteredEvents.length} 条</span>
-        {search && <span>（搜索结果）</span>}
+      <div className="text-sm text-muted-foreground mb-3">
+        共 {filteredEvents.length} 条 {search && '（搜索结果）'}
       </div>
 
-      {/* 事件列表 */}
       <ScrollArea className="flex-1">
         <div className="space-y-2 pr-4">
           {filteredEvents.map((evt) => (
-            <EventItem
+            <MatchedEventItem
               key={evt.id}
               event={evt}
               isExpanded={expandedEvent === evt.id}
@@ -141,22 +191,100 @@ export function EventsPanel({ events, onClear }: EventsPanelProps) {
   )
 }
 
-interface EventItemProps {
-  event: InterceptEvent
+// ========== 未匹配事件列表 ==========
+interface UnmatchedEventsListProps {
+  events: UnmatchedEventWithId[]
+  onClear?: () => void
+}
+
+function UnmatchedEventsList({ events, onClear }: UnmatchedEventsListProps) {
+  const [search, setSearch] = useState('')
+  const [expandedEvent, setExpandedEvent] = useState<string | null>(null)
+
+  const filteredEvents = useMemo(() => {
+    if (!search) return events
+    const searchLower = search.toLowerCase()
+    return events.filter(evt => 
+      evt.url.toLowerCase().includes(searchLower) ||
+      evt.method.toLowerCase().includes(searchLower)
+    )
+  }, [events, search])
+
+  if (events.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+        <div className="text-4xl mb-4 opacity-50">📡</div>
+        <p>暂无未匹配请求</p>
+        <p className="text-sm mt-1">未匹配任何规则的请求将在此显示</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="h-full flex flex-col">
+      {/* 工具栏 */}
+      <div className="flex items-center gap-2 mb-4">
+        <div className="relative flex-1 max-w-xs">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="搜索 URL、方法..."
+            className="pl-9 pr-8"
+          />
+          {search && (
+            <button 
+              onClick={() => setSearch('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+
+        {onClear && (
+          <Button variant="outline" size="sm" onClick={onClear}>
+            <Trash2 className="w-4 h-4 mr-1" />
+            清除
+          </Button>
+        )}
+      </div>
+
+      <div className="text-sm text-muted-foreground mb-3">
+        共 {filteredEvents.length} 条 {search && '（搜索结果）'}
+      </div>
+
+      <ScrollArea className="flex-1">
+        <div className="space-y-2 pr-4">
+          {filteredEvents.map((evt) => (
+            <UnmatchedEventItem
+              key={evt.id}
+              event={evt}
+              isExpanded={expandedEvent === evt.id}
+              onToggleExpand={() => setExpandedEvent(expandedEvent === evt.id ? null : evt.id)}
+            />
+          ))}
+        </div>
+      </ScrollArea>
+    </div>
+  )
+}
+
+// ========== 匹配事件项 ==========
+interface MatchedEventItemProps {
+  event: MatchedEventWithId
   isExpanded: boolean
   onToggleExpand: () => void
 }
 
-function EventItem({ event, isExpanded, onToggleExpand }: EventItemProps) {
+function MatchedEventItem({ event, isExpanded, onToggleExpand }: MatchedEventItemProps) {
   const [copied, setCopied] = useState(false)
-  const colors = EVENT_TYPE_COLORS[event.type] || EVENT_TYPE_COLORS.intercepted
+  const colors = FINAL_RESULT_COLORS[event.finalResult] || FINAL_RESULT_COLORS.passed
 
   const handleCopyUrl = async () => {
-    if (event.url) {
-      await navigator.clipboard.writeText(event.url)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    }
+    await navigator.clipboard.writeText(event.url)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
   }
 
   const formatTime = (ts: number) => {
@@ -175,40 +303,40 @@ function EventItem({ event, isExpanded, onToggleExpand }: EventItemProps) {
         className="flex items-center gap-2 p-2.5 cursor-pointer hover:bg-muted/50 transition-colors"
         onClick={onToggleExpand}
       >
-        {/* 类型标签 */}
+        {/* 结果标签 */}
         <Badge variant="outline" className={`${colors.bg} ${colors.text} border-0 text-xs`}>
-          {EVENT_TYPE_LABELS[event.type]}
+          {FINAL_RESULT_LABELS[event.finalResult]}
         </Badge>
 
         {/* 阶段标签 */}
-        {event.stage && (
-          <Badge variant="outline" className="text-xs">
-            {event.stage === 'request' ? (
-              <><ArrowRight className="w-3 h-3 mr-0.5" />REQ</>
-            ) : (
-              <><ArrowLeft className="w-3 h-3 mr-0.5" />RES</>
-            )}
-          </Badge>
-        )}
+        <Badge variant="outline" className="text-xs">
+          {event.stage === 'request' ? (
+            <><ArrowRight className="w-3 h-3 mr-0.5" />REQ</>
+          ) : (
+            <><ArrowLeft className="w-3 h-3 mr-0.5" />RES</>
+          )}
+        </Badge>
 
         {/* Method */}
-        {event.method && (
-          <span className="font-mono text-xs font-medium px-1.5 py-0.5 rounded bg-muted">
-            {event.method}
-          </span>
-        )}
+        <span className="font-mono text-xs font-medium px-1.5 py-0.5 rounded bg-muted">
+          {event.method}
+        </span>
 
         {/* URL */}
         <span className="flex-1 text-sm truncate text-muted-foreground font-mono">
-          {event.url || '-'}
+          {event.url}
         </span>
+
+        {/* 匹配规则数 */}
+        <Badge variant="secondary" className="text-xs">
+          {event.matchedRules.length} 规则
+        </Badge>
 
         {/* 时间 */}
         <span className="text-xs text-muted-foreground shrink-0">
           {formatTime(event.timestamp)}
         </span>
 
-        {/* 展开图标 */}
         {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
       </div>
 
@@ -221,12 +349,6 @@ function EventItem({ event, isExpanded, onToggleExpand }: EventItemProps) {
               <span className="text-muted-foreground">Target:</span>
               <span className="ml-2 font-mono text-xs">{event.target.slice(0, 20)}...</span>
             </div>
-            {event.rule && (
-              <div>
-                <span className="text-muted-foreground">Rule:</span>
-                <span className="ml-2 font-mono text-xs">{event.rule}</span>
-              </div>
-            )}
             {event.statusCode && (
               <div>
                 <span className="text-muted-foreground">Status:</span>
@@ -241,64 +363,206 @@ function EventItem({ event, isExpanded, onToggleExpand }: EventItemProps) {
           </div>
 
           {/* URL */}
-          {event.url && (
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">URL</span>
-                <Button variant="ghost" size="sm" onClick={handleCopyUrl} className="h-6 px-2">
-                  {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                </Button>
-              </div>
-              <div className="p-2 bg-muted rounded font-mono text-xs break-all">
-                {event.url}
-              </div>
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">URL</span>
+              <Button variant="ghost" size="sm" onClick={handleCopyUrl} className="h-6 px-2">
+                {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+              </Button>
             </div>
-          )}
+            <div className="p-2 bg-muted rounded font-mono text-xs break-all">
+              {event.url}
+            </div>
+          </div>
 
-          {/* Request Headers */}
-          {event.requestHeaders && Object.keys(event.requestHeaders).length > 0 && (
+          {/* 匹配的规则 */}
+          <div className="space-y-1">
+            <span className="text-muted-foreground">匹配规则</span>
             <div className="space-y-1">
-              <span className="text-muted-foreground">Request Headers</span>
-              <div className="p-2 bg-muted rounded font-mono text-xs max-h-24 overflow-auto">
-                {Object.entries(event.requestHeaders).map(([key, value]) => (
-                  <div key={key}>
-                    <span className="text-primary">{key}:</span> {value}
+              {event.matchedRules.map((rule, idx) => (
+                <div key={idx} className="p-2 bg-muted rounded text-xs flex items-center gap-2">
+                  <span className="font-medium">{rule.ruleName}</span>
+                  <span className="text-muted-foreground">→</span>
+                  <div className="flex gap-1 flex-wrap">
+                    {rule.actions.map((action, i) => (
+                      <Badge key={i} variant="secondary" className="text-xs">{action}</Badge>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </div>
+              ))}
             </div>
-          )}
+          </div>
 
-          {/* Response Headers */}
-          {event.responseHeaders && Object.keys(event.responseHeaders).length > 0 && (
+          {/* 原始数据 vs 修改后数据 */}
+          <div className="grid grid-cols-2 gap-3">
+            {/* 原始 Headers */}
             <div className="space-y-1">
-              <span className="text-muted-foreground">Response Headers</span>
-              <div className="p-2 bg-muted rounded font-mono text-xs max-h-24 overflow-auto">
-                {Object.entries(event.responseHeaders).map(([key, value]) => (
-                  <div key={key}>
-                    <span className="text-primary">{key}:</span> {value}
-                  </div>
-                ))}
+              <span className="text-muted-foreground">原始 Headers</span>
+              <div className="p-2 bg-muted rounded font-mono text-xs max-h-32 overflow-auto">
+                {Object.keys(event.original.headers).length > 0 ? (
+                  Object.entries(event.original.headers).map(([key, value]) => (
+                    <div key={key}>
+                      <span className="text-primary">{key}:</span> {value}
+                    </div>
+                  ))
+                ) : (
+                  <span className="text-muted-foreground">（无）</span>
+                )}
               </div>
             </div>
-          )}
 
-          {/* Body */}
-          {event.body && (
+            {/* 修改后 Headers */}
             <div className="space-y-1">
-              <span className="text-muted-foreground">Body</span>
-              <div className="p-2 bg-muted rounded font-mono text-xs max-h-32 overflow-auto whitespace-pre-wrap">
-                {event.body}
+              <span className="text-muted-foreground">修改后 Headers</span>
+              <div className="p-2 bg-muted rounded font-mono text-xs max-h-32 overflow-auto">
+                {Object.keys(event.modified.headers).length > 0 ? (
+                  Object.entries(event.modified.headers).map(([key, value]) => (
+                    <div key={key}>
+                      <span className="text-primary">{key}:</span> {value}
+                    </div>
+                  ))
+                ) : (
+                  <span className="text-muted-foreground">（无）</span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Body 对比 */}
+          {(event.original.body || event.modified.body) && (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <span className="text-muted-foreground">原始 Body</span>
+                <div className="p-2 bg-muted rounded font-mono text-xs max-h-32 overflow-auto whitespace-pre-wrap">
+                  {event.original.body || <span className="text-muted-foreground">（空）</span>}
+                </div>
+              </div>
+              <div className="space-y-1">
+                <span className="text-muted-foreground">修改后 Body</span>
+                <div className="p-2 bg-muted rounded font-mono text-xs max-h-32 overflow-auto whitespace-pre-wrap">
+                  {event.modified.body || <span className="text-muted-foreground">（空）</span>}
+                </div>
               </div>
             </div>
           )}
+        </div>
+      )}
+    </div>
+  )
+}
 
-          {/* Error */}
-          {event.error && (
-            <div className="p-2 bg-red-500/10 text-red-500 rounded text-xs">
-              Error: {event.error}
-            </div>
+// ========== 未匹配事件项 ==========
+interface UnmatchedEventItemProps {
+  event: UnmatchedEventWithId
+  isExpanded: boolean
+  onToggleExpand: () => void
+}
+
+function UnmatchedEventItem({ event, isExpanded, onToggleExpand }: UnmatchedEventItemProps) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopyUrl = async () => {
+    await navigator.clipboard.writeText(event.url)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+
+  const formatTime = (ts: number) => {
+    return new Date(ts).toLocaleTimeString('zh-CN', { 
+      hour: '2-digit', 
+      minute: '2-digit', 
+      second: '2-digit',
+      hour12: false 
+    })
+  }
+
+  return (
+    <div className="border rounded-lg bg-card overflow-hidden">
+      {/* 头部 */}
+      <div 
+        className="flex items-center gap-2 p-2.5 cursor-pointer hover:bg-muted/50 transition-colors"
+        onClick={onToggleExpand}
+      >
+        {/* 未匹配标签 */}
+        <Badge variant="outline" className={`${UNMATCHED_COLORS.bg} ${UNMATCHED_COLORS.text} border-0 text-xs`}>
+          未匹配
+        </Badge>
+
+        {/* 阶段标签 */}
+        <Badge variant="outline" className="text-xs">
+          {event.stage === 'request' ? (
+            <><ArrowRight className="w-3 h-3 mr-0.5" />REQ</>
+          ) : (
+            <><ArrowLeft className="w-3 h-3 mr-0.5" />RES</>
           )}
+        </Badge>
+
+        {/* Method */}
+        <span className="font-mono text-xs font-medium px-1.5 py-0.5 rounded bg-muted">
+          {event.method}
+        </span>
+
+        {/* URL */}
+        <span className="flex-1 text-sm truncate text-muted-foreground font-mono">
+          {event.url}
+        </span>
+
+        {/* Status Code (如果有) */}
+        {event.statusCode && (
+          <span className={`font-mono text-xs ${
+            event.statusCode >= 400 ? 'text-red-500' : 
+            event.statusCode >= 300 ? 'text-yellow-500' : 'text-green-500'
+          }`}>
+            {event.statusCode}
+          </span>
+        )}
+
+        {/* 时间 */}
+        <span className="text-xs text-muted-foreground shrink-0">
+          {formatTime(event.timestamp)}
+        </span>
+
+        {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+      </div>
+
+      {/* 展开详情 */}
+      {isExpanded && (
+        <div className="border-t p-3 space-y-3 text-sm">
+          {/* 基本信息 */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <span className="text-muted-foreground">Target:</span>
+              <span className="ml-2 font-mono text-xs">{event.target.slice(0, 20)}...</span>
+            </div>
+            {event.statusCode && (
+              <div>
+                <span className="text-muted-foreground">Status:</span>
+                <span className={`ml-2 font-mono ${
+                  event.statusCode >= 400 ? 'text-red-500' : 
+                  event.statusCode >= 300 ? 'text-yellow-500' : 'text-green-500'
+                }`}>
+                  {event.statusCode}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* URL */}
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">URL</span>
+              <Button variant="ghost" size="sm" onClick={handleCopyUrl} className="h-6 px-2">
+                {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+              </Button>
+            </div>
+            <div className="p-2 bg-muted rounded font-mono text-xs break-all">
+              {event.url}
+            </div>
+          </div>
+
+          <div className="p-2 bg-slate-500/10 rounded text-xs text-muted-foreground">
+            此请求未匹配任何规则，已直接放行
+          </div>
         </div>
       )}
     </div>

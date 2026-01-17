@@ -1,16 +1,17 @@
 package storage
 
 import (
+	"encoding/json"
 	"sync"
 	"time"
 
 	"cdpnetool/pkg/model"
 )
 
-// EventRepo 事件历史仓库
+// EventRepo 事件仓库（只存储匹配事件到数据库）
 type EventRepo struct {
 	db        *DB
-	buffer    []InterceptEventRecord
+	buffer    []MatchedEventRecord
 	bufferMu  sync.Mutex
 	batchSize int
 	flushCh   chan struct{}
@@ -22,7 +23,7 @@ type EventRepo struct {
 func NewEventRepo(db *DB) *EventRepo {
 	r := &EventRepo{
 		db:        db,
-		buffer:    make([]InterceptEventRecord, 0, 100),
+		buffer:    make([]MatchedEventRecord, 0, 100),
 		batchSize: 50,
 		flushCh:   make(chan struct{}, 1),
 		stopCh:    make(chan struct{}),
@@ -61,7 +62,7 @@ func (r *EventRepo) flush() {
 		return
 	}
 	toWrite := r.buffer
-	r.buffer = make([]InterceptEventRecord, 0, 100)
+	r.buffer = make([]MatchedEventRecord, 0, 100)
 	r.bufferMu.Unlock()
 
 	// 批量插入
@@ -77,23 +78,26 @@ func (r *EventRepo) Stop() {
 	r.wg.Wait()
 }
 
-// Record 记录事件（异步）
-func (r *EventRepo) Record(evt model.Event) {
-	record := InterceptEventRecord{
-		SessionID:  string(evt.Session),
-		TargetID:   string(evt.Target),
-		Type:       evt.Type,
-		URL:        evt.URL,
-		Method:     evt.Method,
-		Stage:      evt.Stage,
-		StatusCode: evt.StatusCode,
-		Error:      evt.Error,
-		Timestamp:  evt.Timestamp,
-		CreatedAt:  time.Now(),
-	}
-	if evt.Rule != nil {
-		ruleID := string(*evt.Rule)
-		record.RuleID = &ruleID
+// RecordMatched 记录匹配事件（异步写入数据库）
+func (r *EventRepo) RecordMatched(evt *model.MatchedEvent) {
+	// 序列化规则列表
+	matchedRulesJSON, _ := json.Marshal(evt.MatchedRules)
+	originalJSON, _ := json.Marshal(evt.Original)
+	modifiedJSON, _ := json.Marshal(evt.Modified)
+
+	record := MatchedEventRecord{
+		SessionID:        string(evt.Session),
+		TargetID:         string(evt.Target),
+		URL:              evt.URL,
+		Method:           evt.Method,
+		Stage:            evt.Stage,
+		StatusCode:       evt.StatusCode,
+		FinalResult:      evt.FinalResult,
+		MatchedRulesJSON: string(matchedRulesJSON),
+		OriginalJSON:     string(originalJSON),
+		ModifiedJSON:     string(modifiedJSON),
+		Timestamp:        evt.Timestamp,
+		CreatedAt:        time.Now(),
 	}
 
 	r.bufferMu.Lock()
@@ -109,16 +113,28 @@ func (r *EventRepo) Record(evt model.Event) {
 	}
 }
 
-// Query 查询事件历史
-func (r *EventRepo) Query(opts QueryOptions) ([]InterceptEventRecord, int64, error) {
-	query := r.db.GormDB().Model(&InterceptEventRecord{})
+// QueryOptions 查询选项
+type QueryOptions struct {
+	SessionID   string
+	FinalResult string // blocked / modified / passed
+	URL         string
+	Method      string
+	StartTime   int64
+	EndTime     int64
+	Offset      int
+	Limit       int
+}
+
+// Query 查询匹配事件历史
+func (r *EventRepo) Query(opts QueryOptions) ([]MatchedEventRecord, int64, error) {
+	query := r.db.GormDB().Model(&MatchedEventRecord{})
 
 	// 应用过滤条件
 	if opts.SessionID != "" {
 		query = query.Where("session_id = ?", opts.SessionID)
 	}
-	if opts.Type != "" {
-		query = query.Where("type = ?", opts.Type)
+	if opts.FinalResult != "" {
+		query = query.Where("final_result = ?", opts.FinalResult)
 	}
 	if opts.URL != "" {
 		query = query.Where("url LIKE ?", "%"+opts.URL+"%")
@@ -147,7 +163,7 @@ func (r *EventRepo) Query(opts QueryOptions) ([]InterceptEventRecord, int64, err
 		opts.Limit = 1000
 	}
 
-	var records []InterceptEventRecord
+	var records []MatchedEventRecord
 	err := query.Order("timestamp DESC").
 		Offset(opts.Offset).
 		Limit(opts.Limit).
@@ -156,62 +172,25 @@ func (r *EventRepo) Query(opts QueryOptions) ([]InterceptEventRecord, int64, err
 	return records, total, err
 }
 
-// QueryOptions 查询选项
-type QueryOptions struct {
-	SessionID string
-	Type      string
-	URL       string
-	Method    string
-	StartTime int64
-	EndTime   int64
-	Offset    int
-	Limit     int
+// GetByID 根据ID获取事件
+func (r *EventRepo) GetByID(id uint) (*MatchedEventRecord, error) {
+	var record MatchedEventRecord
+	err := r.db.GormDB().First(&record, id).Error
+	if err != nil {
+		return nil, err
+	}
+	return &record, nil
 }
 
 // DeleteOldEvents 删除旧事件（数据清理）
 func (r *EventRepo) DeleteOldEvents(beforeTimestamp int64) (int64, error) {
-	result := r.db.GormDB().Where("timestamp < ?", beforeTimestamp).Delete(&InterceptEventRecord{})
+	result := r.db.GormDB().Where("timestamp < ?", beforeTimestamp).Delete(&MatchedEventRecord{})
 	return result.RowsAffected, result.Error
 }
 
 // DeleteBySession 删除指定会话的事件
 func (r *EventRepo) DeleteBySession(sessionID string) error {
-	return r.db.GormDB().Where("session_id = ?", sessionID).Delete(&InterceptEventRecord{}).Error
-}
-
-// GetStats 获取事件统计
-func (r *EventRepo) GetStats() (*EventStats, error) {
-	var stats EventStats
-
-	// 总数
-	if err := r.db.GormDB().Model(&InterceptEventRecord{}).Count(&stats.Total).Error; err != nil {
-		return nil, err
-	}
-
-	// 按类型统计
-	type typeCount struct {
-		Type  string
-		Count int64
-	}
-	var typeCounts []typeCount
-	if err := r.db.GormDB().Model(&InterceptEventRecord{}).
-		Select("type, count(*) as count").
-		Group("type").
-		Find(&typeCounts).Error; err != nil {
-		return nil, err
-	}
-	stats.ByType = make(map[string]int64)
-	for _, tc := range typeCounts {
-		stats.ByType[tc.Type] = tc.Count
-	}
-
-	return &stats, nil
-}
-
-// EventStats 事件统计
-type EventStats struct {
-	Total  int64            `json:"total"`
-	ByType map[string]int64 `json:"byType"`
+	return r.db.GormDB().Where("session_id = ?", sessionID).Delete(&MatchedEventRecord{}).Error
 }
 
 // CleanupOldEvents 根据保留天数清理旧事件
@@ -221,4 +200,9 @@ func (r *EventRepo) CleanupOldEvents(retentionDays int) (int64, error) {
 	}
 	cutoff := time.Now().AddDate(0, 0, -retentionDays).UnixMilli()
 	return r.DeleteOldEvents(cutoff)
+}
+
+// ClearAll 清空所有事件
+func (r *EventRepo) ClearAll() error {
+	return r.db.GormDB().Where("1 = 1").Delete(&MatchedEventRecord{}).Error
 }

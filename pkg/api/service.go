@@ -37,7 +37,7 @@ type Service interface {
 	GetRuleStats(id model.SessionID) (model.EngineStats, error)
 
 	// SubscribeEvents 订阅事件
-	SubscribeEvents(id model.SessionID) (<-chan model.Event, error)
+	SubscribeEvents(id model.SessionID) (<-chan model.InterceptEvent, error)
 }
 
 // NewService 创建并返回服务接口实现

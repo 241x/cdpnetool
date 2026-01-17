@@ -31,18 +31,19 @@ type ConfigRecord struct {
 	UpdatedAt  time.Time `json:"updatedAt"`                            // 更新时间
 }
 
-// InterceptEventRecord 拦截事件历史表
-type InterceptEventRecord struct {
-	ID         uint      `gorm:"primaryKey" json:"id"`   // 主键ID
-	SessionID  string    `gorm:"index" json:"sessionId"` // 会话ID
-	TargetID   string    `json:"targetId"`               // 目标ID
-	Type       string    `gorm:"index" json:"type"`      // matched, rewritten, failed, rejected...
-	URL        string    `json:"url"`                    // URL
-	Method     string    `json:"method"`                 // 方法
-	Stage      string    `json:"stage"`                  // 阶段
-	StatusCode int       `json:"statusCode"`             // 状态码
-	RuleID     *string   `json:"ruleId"`                 // 规则ID
-	Error      string    `json:"error"`                  // 错误信息
-	Timestamp  int64     `gorm:"index" json:"timestamp"` // 时间戳
-	CreatedAt  time.Time `json:"createdAt"`              // 创建时间
+// MatchedEventRecord 匹配事件记录表（只存储匹配的请求）
+type MatchedEventRecord struct {
+	ID               uint      `gorm:"primaryKey" json:"id"`
+	SessionID        string    `gorm:"index" json:"sessionId"`
+	TargetID         string    `json:"targetId"`
+	URL              string    `json:"url"`
+	Method           string    `json:"method"`
+	Stage            string    `json:"stage"`                             // request / response
+	StatusCode       int       `json:"statusCode"`                        // 状态码
+	FinalResult      string    `gorm:"index" json:"finalResult"`          // blocked / modified / passed
+	MatchedRulesJSON string    `gorm:"type:text" json:"matchedRulesJson"` // 匹配规则 JSON 数组
+	OriginalJSON     string    `gorm:"type:text" json:"originalJson"`     // 原始请求/响应 JSON
+	ModifiedJSON     string    `gorm:"type:text" json:"modifiedJson"`     // 修改后请求/响应 JSON
+	Timestamp        int64     `gorm:"index" json:"timestamp"`
+	CreatedAt        time.Time `json:"createdAt"`
 }
