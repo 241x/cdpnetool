@@ -138,7 +138,7 @@
 **解决方法：**
 1. 参考 [快速开始](./02-quick-start.md) 中的「从源码构建」章节
 2. 需要安装 Go、Node.js 和 Wails CLI
-3. 如遇到问题，欢迎通过 GitHub Issues 反馈
+3. 如遇到问题，欢迎通过 [GitHub Issues](https://github.com/241x/cdpnetool/issues) 反馈
 
 ---
 
@@ -168,7 +168,7 @@
 
 ## Q: 遇到 Bug 如何反馈？
 
-1. 访问 GitHub Issues：`https://github.com/xxx/cdpnetool/issues`
+1. 访问 GitHub Issues：`https://github.com/241x/cdpnetool/issues`
 2. 提供以下信息：
    - 系统版本（Windows 10/11）
    - 工具版本

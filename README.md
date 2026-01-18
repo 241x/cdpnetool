@@ -1,9 +1,13 @@
 # cdpnetool
 
+<p align="center">
+  <img src="./docs/assets/images/logo.png" alt="cdpnetool Logo" width="200" />
+</p>
+
 > 基于 Chrome DevTools Protocol 的网络请求拦截与修改工具
 
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/xxx/cdpnetool)](https://github.com/xxx/cdpnetool/releases)
+[![Release](https://img.shields.io/github/v/release/241x/cdpnetool)](https://github.com/241x/cdpnetool/releases)
 
 ## 简介
 
@@ -22,7 +26,7 @@ cdpnetool 是一款强大的网络请求拦截工具，通过 Chrome DevTools Pr
 
 **Windows 用户：**
 
-从 [Releases](https://github.com/xxx/cdpnetool/releases) 下载最新版本的安装包并运行。
+从 [Releases](https://github.com/241x/cdpnetool/releases) 下载最新版本的安装包并运行。
 
 **其他平台：**
 
@@ -62,7 +66,7 @@ macOS 和 Linux 平台需要从源码构建，详见 [文档](./docs/02-quick-st
 
 ```bash
 # 克隆项目
-git clone https://github.com/xxx/cdpnetool.git
+git clone https://github.com/241x/cdpnetool.git
 cd cdpnetool
 
 # 安装 Wails CLI

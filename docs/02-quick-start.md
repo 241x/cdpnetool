@@ -18,7 +18,7 @@
 
 #### Windows 用户
 
-1. 访问 [GitHub Releases](https://github.com/xxx/cdpnetool/releases) 页面
+1. 访问 [GitHub Releases](https://github.com/241x/cdpnetool/releases) 页面
 2. 下载最新版本的 Windows 安装包
 3. 运行 `.exe` 安装程序，按提示完成安装
 4. 或下载便携版 `.zip`，解压后直接运行
@@ -46,7 +46,7 @@
 **1. 克隆项目**
 
 ```bash
-git clone https://github.com/xxx/cdpnetool.git
+git clone https://github.com/241x/cdpnetool.git
 cd cdpnetool
 ```
 
