@@ -6,6 +6,10 @@
 
 > 基于 Chrome DevTools Protocol 的网络请求拦截与修改工具
 
+<p align="center">
+  <img src="./docs/assets/images/Rules.png" alt="cdpnetool 预览" width="800" />
+</p>
+
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/241x/cdpnetool)](https://github.com/241x/cdpnetool/releases)
 
