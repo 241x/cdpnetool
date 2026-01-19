@@ -91,7 +91,7 @@ wails build
 
 ## 交流群
 
-欢迎加入 QQ 交流群，交流使用问题和分享配置：
+欢迎加入 QQ 交流群[734393923](https://qm.qq.com/q/gHFneBljZ6)，交流使用问题和分享配置：
 
 <p align="center">
   <img src="./docs/assets/images/qrcode_group_qq.jpg" alt="QQ交流群" width="300" />
