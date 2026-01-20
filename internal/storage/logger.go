@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"cdpnetool/internal/ctxkeys"
 	logger2 "cdpnetool/internal/logger"
 
 	"gorm.io/gorm/logger"
@@ -34,21 +33,21 @@ func (l *GormLogger) LogMode(level logger.LogLevel) logger.Interface {
 // Info 打印info级别日志
 func (l *GormLogger) Info(ctx context.Context, msg string, data ...any) {
 	if l.LogLevel >= logger.Info {
-		l.Logger.Info(msg, append([]any{"traceId", ctx.Value(ctxkeys.TraceIDKey{})}, data...)...)
+		l.Logger.Info(msg, data...)
 	}
 }
 
 // Warn 打印warn级别日志
 func (l *GormLogger) Warn(ctx context.Context, msg string, data ...any) {
 	if l.LogLevel >= logger.Warn {
-		l.Logger.Warn(msg, append([]any{"traceId", ctx.Value(ctxkeys.TraceIDKey{})}, data...)...)
+		l.Logger.Warn(msg, data...)
 	}
 }
 
 // Error 打印error级别日志
 func (l *GormLogger) Error(ctx context.Context, msg string, data ...any) {
 	if l.LogLevel >= logger.Error {
-		l.Logger.Error(msg, append([]any{"traceId", ctx.Value(ctxkeys.TraceIDKey{})}, data...)...)
+		l.Logger.Error(msg, data...)
 	}
 }
 
@@ -61,7 +60,6 @@ func (l *GormLogger) Trace(ctx context.Context, begin time.Time, fc func() (stri
 	elapsed := time.Since(begin)
 	sql, rows := fc()
 	fields := []any{
-		"traceId", ctx.Value(ctxkeys.TraceIDKey{}),
 		"sql", sql,
 		"rows", rows,
 		"timeMs", float64(elapsed.Nanoseconds()) / 1e6,
