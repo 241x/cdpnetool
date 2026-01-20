@@ -32,7 +32,7 @@ type session struct {
 // New 创建并返回服务层实例
 func New(l logger.Logger) *svc {
 	if l == nil {
-		l = logger.NewNoopLogger()
+		l = logger.NewNop()
 	}
 	return &svc{sessions: make(map[model.SessionID]*session), log: l}
 }

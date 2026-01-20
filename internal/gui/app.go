@@ -36,7 +36,10 @@ type App struct {
 // NewApp 创建并返回一个新的 App 实例。
 func NewApp() *App {
 	cfg := config.NewConfig()
-	log := logger.NewZeroLogger(cfg)
+	log := logger.New(logger.Options{
+		Level:   cfg.Log.Level,
+		Writers: cfg.Log.Writer,
+	})
 	return &App{
 		cfg:     cfg,
 		log:     log,

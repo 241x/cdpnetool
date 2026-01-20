@@ -1,285 +1,148 @@
 package logger
 
 import (
-	"cdpnetool/internal/config"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
-	"time"
 
 	"github.com/rs/zerolog"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
-type LogLevel int
-
-const (
-	LogLevelDebug LogLevel = iota
-	LogLevelInfo
-	LogLevelWarn
-	LogLevelError
-	LogLevelNone
-)
-
-// String 返回日志级别的字符串
-func (l LogLevel) String() string {
-	switch l {
-	case LogLevelDebug:
-		return "DEBUG"
-	case LogLevelInfo:
-		return "INFO"
-	case LogLevelWarn:
-		return "WARN"
-	case LogLevelError:
-		return "ERROR"
-	case LogLevelNone:
-		return "NONE"
-	default:
-		return "UNKNOWN"
-	}
-}
-
-// Logger 定义日志接口
+// Logger 定义结构化日志接口
 type Logger interface {
-	// Debug 记录调试信息
-	Debug(format string, args ...any)
-
-	// Info 记录一般信息
-	Info(format string, args ...any)
-
-	// Warn 记录警告信息
-	Warn(format string, args ...any)
-
-	// Error 记录错误信息
-	Error(format string, args ...any)
-
-	// Err 记录错误信息
+	Debug(msg string, fields ...any)
+	Info(msg string, fields ...any)
+	Warn(msg string, fields ...any)
+	Error(msg string, fields ...any)
 	Err(err error, msg string, fields ...any)
+	With(fields ...any) Logger
 }
 
-// DefaultLogger 默认日志实现
-type DefaultLogger struct {
-	level  LogLevel
-	logger *log.Logger
+// Options 日志配置选项
+type Options struct {
+	Level      string   // 日志级别: debug, info, warn, error
+	Writers    []string // 输出目标: console, file
+	Filename   string   // 日志文件名 (如果为空则自动生成)
+	MaxSize    int      // 每个日志文件最大 MB
+	MaxBackups int      // 保留的最大旧文件数
+	MaxAge     int      // 保留的最大天数
+	Compress   bool     // 是否压缩旧文件
 }
 
-// NewDefaultLogger 创建默认日志记录器
-func NewDefaultLogger(cfg *config.Config) *DefaultLogger {
-	logLevel := LogLevelDebug
-	switch cfg.Log.Level {
+type zeroLogger struct {
+	logger zerolog.Logger
+}
+
+// New 创建一个新的结构化日志记录器
+func New(opts Options) Logger {
+	level := zerolog.DebugLevel
+	switch opts.Level {
 	case "info":
-		logLevel = LogLevelInfo
+		level = zerolog.InfoLevel
 	case "warn":
-		logLevel = LogLevelWarn
+		level = zerolog.WarnLevel
 	case "error":
-		logLevel = LogLevelError
+		level = zerolog.ErrorLevel
 	}
 
-	writers := make([]io.Writer, 0)
-	for _, writer := range cfg.Log.Writer {
-		switch writer {
+	var writers []io.Writer
+	for _, w := range opts.Writers {
+		switch w {
 		case "console":
-			writers = append(writers, os.Stderr)
-		case "file":
-			filename, _ := getLogPath()
-			writers = append(writers, &lumberjack.Logger{
-				Filename:   filename,
-				MaxSize:    1,
-				MaxAge:     30,
-				MaxBackups: 3,
-				LocalTime:  true,
-				Compress:   false,
+			writers = append(writers, zerolog.ConsoleWriter{
+				Out:        os.Stderr,
+				TimeFormat: "2006-01-02 15:04:05.000",
 			})
+		case "file":
+			filename := opts.Filename
+			if filename == "" {
+				var err error
+				filename, err = GetDefaultLogPath()
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "无法获取默认日志路径: %v\n", err)
+					continue
+				}
+			}
+
+			// 确保日志目录存在
+			dir := filepath.Dir(filename)
+			if err := os.MkdirAll(dir, 0755); err != nil {
+				fmt.Fprintf(os.Stderr, "无法创建日志目录 %s: %v\n", dir, err)
+				continue
+			}
+
+			lumberjackLogger := &lumberjack.Logger{
+				Filename:   filename,
+				MaxSize:    opts.MaxSize,
+				MaxBackups: opts.MaxBackups,
+				MaxAge:     opts.MaxAge,
+				Compress:   opts.Compress,
+				LocalTime:  true,
+			}
+			if lumberjackLogger.MaxSize <= 0 {
+				lumberjackLogger.MaxSize = 10 // 默认 10MB
+			}
+			if lumberjackLogger.MaxBackups <= 0 {
+				lumberjackLogger.MaxBackups = 5
+			}
+			if lumberjackLogger.MaxAge <= 0 {
+				lumberjackLogger.MaxAge = 30
+			}
+
+			writers = append(writers, lumberjackLogger)
 		}
 	}
 
 	if len(writers) == 0 {
-		return &DefaultLogger{
-			level:  LogLevelNone,
-			logger: log.New(io.Discard, "", 0),
-		}
+		return NewNop()
 	}
 
-	multiWriter := io.MultiWriter(writers...)
-
-	return &DefaultLogger{
-		level:  logLevel,
-		logger: log.New(multiWriter, "", 0),
-	}
-}
-
-// Debug 记录调试信息
-func (l *DefaultLogger) Debug(format string, args ...any) {
-	if l.level <= LogLevelDebug {
-		l.log(LogLevelDebug, format, args...)
-	}
-}
-
-// Info 记录一般信息
-func (l *DefaultLogger) Info(format string, args ...any) {
-	if l.level <= LogLevelInfo {
-		l.log(LogLevelInfo, format, args...)
-	}
-}
-
-// Warn 记录警告信息
-func (l *DefaultLogger) Warn(format string, args ...any) {
-	if l.level <= LogLevelWarn {
-		l.log(LogLevelWarn, format, args...)
-	}
-}
-
-// Error 记录错误信息
-func (l *DefaultLogger) Error(format string, args ...any) {
-	if l.level <= LogLevelError {
-		l.log(LogLevelError, format, args...)
-	}
-}
-
-// Err 记录错误信息
-func (l *DefaultLogger) Err(err error, msg string, fields ...any) {
-	if l.level <= LogLevelError {
-		l.log(LogLevelError, fmt.Sprintf("%s: %s", msg, err), fields...)
-	}
-}
-
-// log 内部日志方法
-func (l *DefaultLogger) log(level LogLevel, message string, args ...any) {
-	timestamp := time.Now().Format("2006-01-02 15:04:05.000")
-
-	if len(args)%2 != 0 {
-		args = append(args, "MISSING")
-	}
-
-	// 添加键值对
-	var others strings.Builder
-	for i := 0; i < len(args); i += 2 {
-		key := fmt.Sprintf("%v", args[i])
-		value := args[i+1]
-		fmt.Fprintf(&others, " %s=%v", key, value)
-	}
-
-	l.logger.Printf("[%s] [%s] \"%s\" %s", timestamp, level.String(), message, others.String())
-}
-
-// NoopLogger 空日志实现,不输出任何日志
-type NoopLogger struct{}
-
-// NewNoopLogger 创建空日志记录器
-func NewNoopLogger() *NoopLogger {
-	return &NoopLogger{}
-}
-
-// Debug 不执行任何操作
-func (l *NoopLogger) Debug(format string, args ...any) {}
-
-// Info 不执行任何操作
-func (l *NoopLogger) Info(format string, args ...any) {}
-
-// Warn 不执行任何操作
-func (l *NoopLogger) Warn(format string, args ...any) {}
-
-// Error 不执行任何操作
-func (l *NoopLogger) Error(format string, args ...any) {}
-
-// Err 记录错误信息
-func (l *NoopLogger) Err(err error, msg string, fields ...any) {}
-
-// ZeroLogger 日志组件
-type ZeroLogger struct {
-	logger   zerolog.Logger
-	logLevel zerolog.Level
-}
-
-// NewZeroLogger 创建日志组件
-func NewZeroLogger(cfg *config.Config) *ZeroLogger {
-	if cfg == nil {
-		return &ZeroLogger{
-			logger:   zerolog.Nop(),
-			logLevel: zerolog.Disabled,
-		}
-	}
-
-	logLevel := zerolog.DebugLevel
-	switch cfg.Log.Level {
-	case "info":
-		logLevel = zerolog.InfoLevel
-	case "warn":
-		logLevel = zerolog.WarnLevel
-	case "error":
-		logLevel = zerolog.ErrorLevel
-	}
-
-	writers := make([]io.Writer, 0)
-	for _, writer := range cfg.Log.Writer {
-		switch writer {
-		case "console":
-			writers = append(writers, os.Stderr)
-		case "file":
-			filename, _ := getLogPath()
-			writers = append(writers, &lumberjack.Logger{
-				Filename:   filename,
-				MaxSize:    1,
-				MaxAge:     30,
-				MaxBackups: 3,
-				LocalTime:  true,
-				Compress:   false,
-			})
-		}
-	}
-
-	if len(writers) == 0 {
-		return Nop()
-	}
-
-	multiWriter := io.MultiWriter(writers...)
-	zerolog.TimeFieldFormat = "2006-01-02 15:04:05"
-	logger := zerolog.New(multiWriter).
+	multi := io.MultiWriter(writers...)
+	l := zerolog.New(multi).
 		With().
-		Caller().
 		Timestamp().
+		CallerWithSkipFrameCount(zerolog.CallerSkipFrameCount + 1).
 		Logger().
-		Level(logLevel)
+		Level(level)
 
-	return &ZeroLogger{logger: logger, logLevel: logLevel}
+	return &zeroLogger{logger: l}
 }
 
-// Nop 创建一个空的日志记录器
-func Nop() *ZeroLogger { return &ZeroLogger{logger: zerolog.Nop()} }
-
-// Info 记录信息
-func (z *ZeroLogger) Info(msg string, fields ...any) {
-	z.logger.Info().CallerSkipFrame(1).Fields(fields).Msg(msg)
+// NewNop 返回一个不执行任何操作的日志记录器
+func NewNop() Logger {
+	return &zeroLogger{logger: zerolog.Nop()}
 }
 
-// Error 记录错误
-func (z *ZeroLogger) Error(msg string, fields ...any) {
-	z.logger.Error().CallerSkipFrame(1).Fields(fields).Msg(msg)
+func (z *zeroLogger) Debug(msg string, fields ...any) {
+	z.logger.Debug().Fields(fields).Msg(msg)
 }
 
-// Debug 记录调试信息
-func (z *ZeroLogger) Debug(msg string, fields ...any) {
-	z.logger.Debug().CallerSkipFrame(1).Fields(fields).Msg(msg)
+func (z *zeroLogger) Info(msg string, fields ...any) {
+	z.logger.Info().Fields(fields).Msg(msg)
 }
 
-// Warn 记录警告
-func (z *ZeroLogger) Warn(msg string, fields ...any) {
-	z.logger.Warn().CallerSkipFrame(1).Fields(fields).Msg(msg)
+func (z *zeroLogger) Warn(msg string, fields ...any) {
+	z.logger.Warn().Fields(fields).Msg(msg)
 }
 
-// Err 记录错误信息
-func (z *ZeroLogger) Err(err error, msg string, fields ...any) {
-	z.logger.Err(err).CallerSkipFrame(1).Fields(fields).Msg(msg)
+func (z *zeroLogger) Error(msg string, fields ...any) {
+	z.logger.Error().Fields(fields).Msg(msg)
 }
 
-// getLogPath 获取日志目录
-func getLogPath() (string, error) {
+func (z *zeroLogger) Err(err error, msg string, fields ...any) {
+	z.logger.Err(err).Fields(fields).Msg(msg)
+}
+
+func (z *zeroLogger) With(fields ...any) Logger {
+	return &zeroLogger{logger: z.logger.With().Fields(fields).Logger()}
+}
+
+// GetDefaultLogPath 获取平台相关的默认日志路径
+func GetDefaultLogPath() (string, error) {
 	var baseDir string
-
 	switch runtime.GOOS {
 	case "windows":
 		baseDir = os.Getenv("APPDATA")
@@ -302,6 +165,5 @@ func getLogPath() (string, error) {
 			baseDir = filepath.Join(home, ".local", "share")
 		}
 	}
-
 	return filepath.Join(baseDir, "cdpnetool", "logs", "app.log"), nil
 }
