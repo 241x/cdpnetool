@@ -38,7 +38,7 @@
 #### 前置要求
 
 - Go 1.21+
-- Node.js 16+
+- Node.js 22+
 - Wails CLI v2
 
 #### 构建步骤
