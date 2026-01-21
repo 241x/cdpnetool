@@ -2,12 +2,11 @@ package cdp
 
 import (
 	"fmt"
-	"net/url"
 	"strings"
 )
 
-// parseCookie 解析Cookie头为键值对映射
-func parseCookie(s string) map[string]string {
+// ParseCookie 解析Cookie头为键值对映射
+func ParseCookie(s string) map[string]string {
 	out := make(map[string]string)
 	parts := strings.Split(s, ";")
 	for _, p := range parts {
@@ -17,36 +16,6 @@ func parseCookie(s string) map[string]string {
 		}
 	}
 	return out
-}
-
-// parseSetCookie 解析Set-Cookie头，返回cookie名和值
-func parseSetCookie(s string) (string, string) {
-	// CookieName=CookieValue; Attr=...
-	p := strings.SplitN(s, ";", 2)
-	first := strings.TrimSpace(p[0])
-	kv := strings.SplitN(first, "=", 2)
-	if len(kv) == 2 {
-		return kv[0], kv[1]
-	}
-	return "", ""
-}
-
-// urlParse 解析URL并应用Query参数补丁
-func urlParse(raw string, qpatch map[string]*string) (*url.URL, error) {
-	u, err := url.Parse(raw)
-	if err != nil {
-		return nil, err
-	}
-	q := u.Query()
-	for k, v := range qpatch {
-		if v == nil {
-			q.Del(k)
-		} else {
-			q.Set(k, *v)
-		}
-	}
-	u.RawQuery = q.Encode()
-	return u, nil
 }
 
 // shouldGetBody 判断是否应该获取Body内容（基于Content-Type和大小）

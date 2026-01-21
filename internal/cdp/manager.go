@@ -10,8 +10,10 @@ import (
 	"sync"
 	"time"
 
+	"cdpnetool/internal/executor"
 	"cdpnetool/internal/logger"
 	"cdpnetool/internal/pool"
+	"cdpnetool/internal/protocol"
 	"cdpnetool/internal/rules"
 	"cdpnetool/pkg/domain"
 	"cdpnetool/pkg/rulespec"
@@ -27,7 +29,7 @@ type Manager struct {
 	devtoolsURL       string
 	log               logger.Logger
 	engine            *rules.Engine
-	executor          *ActionExecutor
+	executor          *executor.Executor
 	bodySizeThreshold int64
 	processTimeoutMS  int
 	pool              *pool.Pool
@@ -58,7 +60,7 @@ func New(devtoolsURL string, events chan domain.InterceptEvent, l logger.Logger)
 		events:      events,
 		targets:     make(map[domain.TargetID]*targetSession),
 	}
-	m.executor = NewActionExecutor(m)
+	m.executor = executor.New()
 	return m
 }
 
@@ -283,13 +285,13 @@ func (m *Manager) buildEvalContext(ev *fetch.RequestPausedReply) *rules.EvalCont
 
 	// 解析 Cookie
 	if v, ok := h["cookie"]; ok {
-		for name, val := range parseCookie(v) {
+		for name, val := range protocol.ParseCookie(v) {
 			ck[strings.ToLower(name)] = val
 		}
 	}
 
 	// 获取请求体
-	bodyText = GetRequestBody(ev)
+	bodyText = protocol.GetRequestBody(ev)
 
 	return &rules.EvalContext{
 		URL:          ev.Request.URL,

@@ -1,7 +1,48 @@
+export namespace domain {
+	
+	export class EngineStats {
+	    total: number;
+	    matched: number;
+	    byRule: Record<string, number>;
+	
+	    static createFrom(source: any = {}) {
+	        return new EngineStats(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.total = source["total"];
+	        this.matched = source["matched"];
+	        this.byRule = source["byRule"];
+	    }
+	}
+	export class TargetInfo {
+	    id: string;
+	    type: string;
+	    url: string;
+	    title: string;
+	    isCurrent: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new TargetInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.type = source["type"];
+	        this.url = source["url"];
+	        this.title = source["title"];
+	        this.isCurrent = source["isCurrent"];
+	    }
+	}
+
+}
+
 export namespace gui {
 	
 	export class ConfigListResult {
-	    configs: storage.ConfigRecord[];
+	    configs: model.ConfigRecord[];
 	    success: boolean;
 	    error?: string;
 	
@@ -11,7 +52,7 @@ export namespace gui {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.configs = this.convertValues(source["configs"], storage.ConfigRecord);
+	        this.configs = this.convertValues(source["configs"], model.ConfigRecord);
 	        this.success = source["success"];
 	        this.error = source["error"];
 	    }
@@ -35,7 +76,7 @@ export namespace gui {
 		}
 	}
 	export class ConfigResult {
-	    config?: storage.ConfigRecord;
+	    config?: model.ConfigRecord;
 	    success: boolean;
 	    error?: string;
 	
@@ -45,7 +86,7 @@ export namespace gui {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.config = this.convertValues(source["config"], storage.ConfigRecord);
+	        this.config = this.convertValues(source["config"], model.ConfigRecord);
 	        this.success = source["success"];
 	        this.error = source["error"];
 	    }
@@ -85,7 +126,7 @@ export namespace gui {
 	    }
 	}
 	export class MatchedEventHistoryResult {
-	    events: storage.MatchedEventRecord[];
+	    events: model.MatchedEventRecord[];
 	    total: number;
 	    success: boolean;
 	    error?: string;
@@ -96,7 +137,7 @@ export namespace gui {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.events = this.convertValues(source["events"], storage.MatchedEventRecord);
+	        this.events = this.convertValues(source["events"], model.MatchedEventRecord);
 	        this.total = source["total"];
 	        this.success = source["success"];
 	        this.error = source["error"];
@@ -121,7 +162,7 @@ export namespace gui {
 		}
 	}
 	export class NewConfigResult {
-	    config?: storage.ConfigRecord;
+	    config?: model.ConfigRecord;
 	    configJson: string;
 	    success: boolean;
 	    error?: string;
@@ -132,7 +173,7 @@ export namespace gui {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.config = this.convertValues(source["config"], storage.ConfigRecord);
+	        this.config = this.convertValues(source["config"], model.ConfigRecord);
 	        this.configJson = source["configJson"];
 	        this.success = source["success"];
 	        this.error = source["error"];
@@ -219,7 +260,7 @@ export namespace gui {
 	    }
 	}
 	export class StatsResult {
-	    stats: model.EngineStats;
+	    stats: domain.EngineStats;
 	    success: boolean;
 	    error?: string;
 	
@@ -229,7 +270,7 @@ export namespace gui {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.stats = this.convertValues(source["stats"], model.EngineStats);
+	        this.stats = this.convertValues(source["stats"], domain.EngineStats);
 	        this.success = source["success"];
 	        this.error = source["error"];
 	    }
@@ -253,7 +294,7 @@ export namespace gui {
 		}
 	}
 	export class TargetListResult {
-	    targets: model.TargetInfo[];
+	    targets: domain.TargetInfo[];
 	    success: boolean;
 	    error?: string;
 	
@@ -263,7 +304,7 @@ export namespace gui {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.targets = this.convertValues(source["targets"], model.TargetInfo);
+	        this.targets = this.convertValues(source["targets"], domain.TargetInfo);
 	        this.success = source["success"];
 	        this.error = source["error"];
 	    }
@@ -290,47 +331,6 @@ export namespace gui {
 }
 
 export namespace model {
-	
-	export class EngineStats {
-	    total: number;
-	    matched: number;
-	    byRule: Record<string, number>;
-	
-	    static createFrom(source: any = {}) {
-	        return new EngineStats(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.total = source["total"];
-	        this.matched = source["matched"];
-	        this.byRule = source["byRule"];
-	    }
-	}
-	export class TargetInfo {
-	    id: string;
-	    type: string;
-	    url: string;
-	    title: string;
-	    isCurrent: boolean;
-	
-	    static createFrom(source: any = {}) {
-	        return new TargetInfo(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.type = source["type"];
-	        this.url = source["url"];
-	        this.title = source["title"];
-	        this.isCurrent = source["isCurrent"];
-	    }
-	}
-
-}
-
-export namespace storage {
 	
 	export class ConfigRecord {
 	    id: number;

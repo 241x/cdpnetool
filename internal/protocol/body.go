@@ -1,4 +1,4 @@
-package cdp
+package protocol
 
 import (
 	"encoding/base64"

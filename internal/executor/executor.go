@@ -1,4 +1,4 @@
-package cdp
+package executor
 
 import (
 	"context"
@@ -8,54 +8,24 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mafredri/cdp"
 	"github.com/mafredri/cdp/protocol/fetch"
-	"github.com/mafredri/cdp/protocol/network"
 	"github.com/tidwall/sjson"
 
+	"cdpnetool/internal/protocol"
 	"cdpnetool/pkg/rulespec"
 )
 
-// ActionExecutor 行为执行器
-type ActionExecutor struct {
-	m *Manager
-}
+// Executor 行为执行器
+type Executor struct{}
 
-// NewActionExecutor 创建行为执行器
-func NewActionExecutor(m *Manager) *ActionExecutor {
-	return &ActionExecutor{m: m}
-}
-
-// RequestMutation 请求修改结果
-type RequestMutation struct {
-	URL           *string
-	Method        *string
-	Headers       map[string]string
-	RemoveHeaders []string
-	Query         map[string]string
-	RemoveQuery   []string
-	Cookies       map[string]string
-	RemoveCookies []string
-	Body          *string
-	Block         *BlockResponse // 终结性行为
-}
-
-// BlockResponse 拦截响应
-type BlockResponse struct {
-	StatusCode int
-	Headers    map[string]string
-	Body       []byte
-}
-
-// ResponseMutation 响应修改结果
-type ResponseMutation struct {
-	StatusCode    *int
-	Headers       map[string]string
-	RemoveHeaders []string
-	Body          *string
+// New 创建行为执行器
+func New() *Executor {
+	return &Executor{}
 }
 
 // ExecuteRequestActions 执行请求阶段的行为，返回修改结果
-func (e *ActionExecutor) ExecuteRequestActions(actions []rulespec.Action, ev *fetch.RequestPausedReply) *RequestMutation {
+func (e *Executor) ExecuteRequestActions(actions []rulespec.Action, ev *fetch.RequestPausedReply) *RequestMutation {
 	mut := &RequestMutation{
 		Headers:       make(map[string]string),
 		Query:         make(map[string]string),
@@ -66,7 +36,7 @@ func (e *ActionExecutor) ExecuteRequestActions(actions []rulespec.Action, ev *fe
 	}
 
 	// 获取当前请求体用于修改
-	currentBody := e.getRequestBody(ev)
+	currentBody := protocol.GetRequestBody(ev)
 
 	for _, action := range actions {
 		switch action.Type {
@@ -166,7 +136,7 @@ func (e *ActionExecutor) ExecuteRequestActions(actions []rulespec.Action, ev *fe
 }
 
 // ExecuteResponseActions 执行响应阶段的行为，返回修改结果
-func (e *ActionExecutor) ExecuteResponseActions(actions []rulespec.Action, ev *fetch.RequestPausedReply, responseBody string) *ResponseMutation {
+func (e *Executor) ExecuteResponseActions(actions []rulespec.Action, ev *fetch.RequestPausedReply, responseBody string) *ResponseMutation {
 	mut := &ResponseMutation{
 		Headers:       make(map[string]string),
 		RemoveHeaders: []string{},
@@ -224,8 +194,8 @@ func (e *ActionExecutor) ExecuteResponseActions(actions []rulespec.Action, ev *f
 }
 
 // ApplyRequestMutation 应用请求修改到 CDP
-func (e *ActionExecutor) ApplyRequestMutation(ctx context.Context, ts *targetSession, ev *fetch.RequestPausedReply, mut *RequestMutation) {
-	if ts == nil || ts.client == nil {
+func (e *Executor) ApplyRequestMutation(ctx context.Context, client *cdp.Client, ev *fetch.RequestPausedReply, mut *RequestMutation) {
+	if client == nil {
 		return
 	}
 
@@ -241,7 +211,7 @@ func (e *ActionExecutor) ApplyRequestMutation(ctx context.Context, ts *targetSes
 		if len(mut.Block.Body) > 0 {
 			args.Body = mut.Block.Body
 		}
-		_ = ts.client.Fetch.FulfillRequest(ctx, args)
+		_ = client.Fetch.FulfillRequest(ctx, args)
 		return
 	}
 
@@ -270,12 +240,12 @@ func (e *ActionExecutor) ApplyRequestMutation(ctx context.Context, ts *targetSes
 		args.PostData = []byte(*mut.Body)
 	}
 
-	_ = ts.client.Fetch.ContinueRequest(ctx, args)
+	_ = client.Fetch.ContinueRequest(ctx, args)
 }
 
 // ApplyResponseMutation 应用响应修改到 CDP
-func (e *ActionExecutor) ApplyResponseMutation(ctx context.Context, ts *targetSession, ev *fetch.RequestPausedReply, mut *ResponseMutation) {
-	if ts == nil || ts.client == nil {
+func (e *Executor) ApplyResponseMutation(ctx context.Context, client *cdp.Client, ev *fetch.RequestPausedReply, mut *ResponseMutation) {
+	if client == nil {
 		return
 	}
 
@@ -297,7 +267,7 @@ func (e *ActionExecutor) ApplyResponseMutation(ctx context.Context, ts *targetSe
 			ResponseHeaders: headers,
 			Body:            []byte(*mut.Body),
 		}
-		_ = ts.client.Fetch.FulfillRequest(ctx, args)
+		_ = client.Fetch.FulfillRequest(ctx, args)
 		return
 	}
 
@@ -311,44 +281,33 @@ func (e *ActionExecutor) ApplyResponseMutation(ctx context.Context, ts *targetSe
 	if len(headers) > 0 {
 		args.ResponseHeaders = headers
 	}
-	_ = ts.client.Fetch.ContinueResponse(ctx, args)
+	_ = client.Fetch.ContinueResponse(ctx, args)
 }
 
 // ContinueRequest 继续原请求
-func (e *ActionExecutor) ContinueRequest(ctx context.Context, ts *targetSession, ev *fetch.RequestPausedReply) {
-	if ts == nil || ts.client == nil {
+func (e *Executor) ContinueRequest(ctx context.Context, client *cdp.Client, ev *fetch.RequestPausedReply) {
+	if client == nil {
 		return
 	}
-	_ = ts.client.Fetch.ContinueRequest(ctx, &fetch.ContinueRequestArgs{RequestID: ev.RequestID})
+	_ = client.Fetch.ContinueRequest(ctx, &fetch.ContinueRequestArgs{RequestID: ev.RequestID})
 }
 
 // ContinueResponse 继续原响应
-func (e *ActionExecutor) ContinueResponse(ctx context.Context, ts *targetSession, ev *fetch.RequestPausedReply) {
-	if ts == nil || ts.client == nil {
+func (e *Executor) ContinueResponse(ctx context.Context, client *cdp.Client, ev *fetch.RequestPausedReply) {
+	if client == nil {
 		return
 	}
-	_ = ts.client.Fetch.ContinueResponse(ctx, &fetch.ContinueResponseArgs{RequestID: ev.RequestID})
-}
-
-// FailRequest 使请求失败
-func (e *ActionExecutor) FailRequest(ctx context.Context, ts *targetSession, ev *fetch.RequestPausedReply, reason string) {
-	if ts == nil || ts.client == nil {
-		return
-	}
-	_ = ts.client.Fetch.FailRequest(ctx, &fetch.FailRequestArgs{
-		RequestID:   ev.RequestID,
-		ErrorReason: network.ErrorReason(reason),
-	})
+	_ = client.Fetch.ContinueResponse(ctx, &fetch.ContinueResponseArgs{RequestID: ev.RequestID})
 }
 
 // FetchResponseBody 获取响应体
-func (e *ActionExecutor) FetchResponseBody(ctx context.Context, ts *targetSession, requestID fetch.RequestID) (string, bool) {
-	if ts == nil || ts.client == nil {
+func (e *Executor) FetchResponseBody(ctx context.Context, client *cdp.Client, requestID fetch.RequestID) (string, bool) {
+	if client == nil {
 		return "", false
 	}
 	ctx2, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 	defer cancel()
-	rb, err := ts.client.Fetch.GetResponseBody(ctx2, &fetch.GetResponseBodyArgs{RequestID: requestID})
+	rb, err := client.Fetch.GetResponseBody(ctx2, &fetch.GetResponseBodyArgs{RequestID: requestID})
 	if err != nil || rb == nil {
 		return "", false
 	}
@@ -361,13 +320,8 @@ func (e *ActionExecutor) FetchResponseBody(ctx context.Context, ts *targetSessio
 	return rb.Body, true
 }
 
-// getRequestBody 获取请求体
-func (e *ActionExecutor) getRequestBody(ev *fetch.RequestPausedReply) string {
-	return GetRequestBody(ev)
-}
-
 // buildFinalURL 构建最终 URL
-func (e *ActionExecutor) buildFinalURL(originalURL string, mut *RequestMutation) *string {
+func (e *Executor) buildFinalURL(originalURL string, mut *RequestMutation) *string {
 	if mut.URL == nil && len(mut.Query) == 0 && len(mut.RemoveQuery) == 0 {
 		return nil
 	}
@@ -404,7 +358,7 @@ func (e *ActionExecutor) buildFinalURL(originalURL string, mut *RequestMutation)
 }
 
 // buildFinalHeaders 构建最终请求头
-func (e *ActionExecutor) buildFinalHeaders(ev *fetch.RequestPausedReply, mut *RequestMutation) []fetch.HeaderEntry {
+func (e *Executor) buildFinalHeaders(ev *fetch.RequestPausedReply, mut *RequestMutation) []fetch.HeaderEntry {
 	// 解析原始头部
 	originalHeaders := make(map[string]string)
 	_ = json.Unmarshal(ev.Request.Headers, &originalHeaders)
@@ -435,7 +389,7 @@ func (e *ActionExecutor) buildFinalHeaders(ev *fetch.RequestPausedReply, mut *Re
 				break
 			}
 		}
-		cookies := parseCookie(cookieStr)
+		cookies := protocol.ParseCookie(cookieStr)
 
 		// 移除 Cookie
 		for _, name := range mut.RemoveCookies {
@@ -463,7 +417,7 @@ func (e *ActionExecutor) buildFinalHeaders(ev *fetch.RequestPausedReply, mut *Re
 }
 
 // buildFinalResponseHeaders 构建最终响应头
-func (e *ActionExecutor) buildFinalResponseHeaders(ev *fetch.RequestPausedReply, mut *ResponseMutation) []fetch.HeaderEntry {
+func (e *Executor) buildFinalResponseHeaders(ev *fetch.RequestPausedReply, mut *ResponseMutation) []fetch.HeaderEntry {
 	// 获取原始响应头
 	headers := make(map[string]string)
 	for _, h := range ev.ResponseHeaders {

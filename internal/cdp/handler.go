@@ -7,6 +7,8 @@ import (
 
 	"github.com/mafredri/cdp/protocol/fetch"
 
+	"cdpnetool/internal/executor"
+	"cdpnetool/internal/protocol"
 	"cdpnetool/internal/rules"
 	"cdpnetool/pkg/domain"
 	"cdpnetool/pkg/rulespec"
@@ -40,7 +42,7 @@ func (m *Manager) handle(ts *targetSession, ev *fetch.RequestPausedReply) {
 	if m.engine == nil {
 		// 无引擎，发送未匹配事件并放行
 		m.sendUnmatchedEvent(ts.id, ev, stage, statusCode)
-		m.executor.ContinueRequest(ctx, ts, ev)
+		m.executor.ContinueRequest(ctx, ts.client, ev)
 		return
 	}
 
@@ -49,9 +51,9 @@ func (m *Manager) handle(ts *targetSession, ev *fetch.RequestPausedReply) {
 		// 未匹配，发送未匹配事件并放行
 		m.sendUnmatchedEvent(ts.id, ev, stage, statusCode)
 		if stage == rulespec.StageRequest {
-			m.executor.ContinueRequest(ctx, ts, ev)
+			m.executor.ContinueRequest(ctx, ts.client, ev)
 		} else {
-			m.executor.ContinueResponse(ctx, ts, ev)
+			m.executor.ContinueResponse(ctx, ts.client, ev)
 		}
 		m.log.Debug("拦截事件处理完成，无匹配规则", "stage", stage, "duration", time.Since(start))
 		return
@@ -81,7 +83,7 @@ func (m *Manager) captureOriginalData(ts *targetSession, ev *fetch.RequestPaused
 	_ = json.Unmarshal(ev.Request.Headers, &requestInfo.Headers)
 
 	// 获取请求体
-	requestInfo.Body = GetRequestBody(ev)
+	requestInfo.Body = protocol.GetRequestBody(ev)
 
 	// 响应信息
 	responseInfo := domain.ResponseInfo{
@@ -97,7 +99,7 @@ func (m *Manager) captureOriginalData(ts *targetSession, ev *fetch.RequestPaused
 			responseInfo.Headers[h.Name] = h.Value
 		}
 		// 响应体需要单独获取
-		responseInfo.Body, _ = m.executor.FetchResponseBody(ts.ctx, ts, ev.RequestID)
+		responseInfo.Body, _ = m.executor.FetchResponseBody(ts.ctx, ts.client, ev.RequestID)
 	}
 
 	return requestInfo, responseInfo
@@ -131,7 +133,7 @@ func (m *Manager) executeRequestStageWithTracking(
 	responseInfo domain.ResponseInfo,
 	start time.Time,
 ) {
-	var aggregatedMut *RequestMutation
+	var aggregatedMut *executor.RequestMutation
 	ruleMatches := buildRuleMatches(matchedRules)
 
 	for _, matched := range matchedRules {
@@ -148,7 +150,7 @@ func (m *Manager) executeRequestStageWithTracking(
 
 		// 检查是否是终结性行为（block）
 		if mut.Block != nil {
-			m.executor.ApplyRequestMutation(ctx, ts, ev, mut)
+			m.executor.ApplyRequestMutation(ctx, ts.client, ev, mut)
 			// 发送 blocked 事件
 			m.sendMatchedEvent(ts.id, "blocked", ruleMatches, requestInfo, responseInfo)
 			m.log.Info("请求被阻止", "rule", rule.ID, "url", ev.Request.URL)
@@ -169,12 +171,12 @@ func (m *Manager) executeRequestStageWithTracking(
 	var modifiedResponseInfo domain.ResponseInfo
 
 	if aggregatedMut != nil && hasRequestMutation(aggregatedMut) {
-		m.executor.ApplyRequestMutation(ctx, ts, ev, aggregatedMut)
+		m.executor.ApplyRequestMutation(ctx, ts.client, ev, aggregatedMut)
 		finalResult = "modified"
 		modifiedRequestInfo = m.captureModifiedRequestData(requestInfo, aggregatedMut)
 		modifiedResponseInfo = responseInfo
 	} else {
-		m.executor.ContinueRequest(ctx, ts, ev)
+		m.executor.ContinueRequest(ctx, ts.client, ev)
 		finalResult = "passed"
 		modifiedRequestInfo = requestInfo
 		modifiedResponseInfo = responseInfo
@@ -196,7 +198,7 @@ func (m *Manager) executeResponseStageWithTracking(
 	start time.Time,
 ) {
 	responseBody := responseInfo.Body
-	var aggregatedMut *ResponseMutation
+	var aggregatedMut *executor.ResponseMutation
 	ruleMatches := buildRuleMatches(matchedRules)
 
 	for _, matched := range matchedRules {
@@ -232,13 +234,13 @@ func (m *Manager) executeResponseStageWithTracking(
 		if aggregatedMut.Body == nil && responseBody != "" {
 			aggregatedMut.Body = &responseBody
 		}
-		m.executor.ApplyResponseMutation(ctx, ts, ev, aggregatedMut)
+		m.executor.ApplyResponseMutation(ctx, ts.client, ev, aggregatedMut)
 		finalResult = "modified"
 		modifiedResponseInfo := m.captureModifiedResponseData(responseInfo, aggregatedMut, responseBody)
 		// 发送匹配事件
 		m.sendMatchedEvent(ts.id, finalResult, ruleMatches, requestInfo, modifiedResponseInfo)
 	} else {
-		m.executor.ContinueResponse(ctx, ts, ev)
+		m.executor.ContinueResponse(ctx, ts.client, ev)
 		finalResult = "passed"
 		// 发送匹配事件
 		m.sendMatchedEvent(ts.id, finalResult, ruleMatches, requestInfo, responseInfo)
@@ -247,7 +249,7 @@ func (m *Manager) executeResponseStageWithTracking(
 }
 
 // captureModifiedRequestData 捕获修改后的请求数据
-func (m *Manager) captureModifiedRequestData(original domain.RequestInfo, mut *RequestMutation) domain.RequestInfo {
+func (m *Manager) captureModifiedRequestData(original domain.RequestInfo, mut *executor.RequestMutation) domain.RequestInfo {
 	modified := domain.RequestInfo{
 		URL:          original.URL,
 		Method:       original.Method,
@@ -283,7 +285,7 @@ func (m *Manager) captureModifiedRequestData(original domain.RequestInfo, mut *R
 }
 
 // captureModifiedResponseData 捕获修改后的响应数据
-func (m *Manager) captureModifiedResponseData(original domain.ResponseInfo, mut *ResponseMutation, finalBody string) domain.ResponseInfo {
+func (m *Manager) captureModifiedResponseData(original domain.ResponseInfo, mut *executor.ResponseMutation, finalBody string) domain.ResponseInfo {
 	modified := domain.ResponseInfo{
 		StatusCode: original.StatusCode,
 		Headers:    make(map[string]string),
@@ -312,7 +314,7 @@ func (m *Manager) captureModifiedResponseData(original domain.ResponseInfo, mut 
 }
 
 // mergeRequestMutation 合并请求变更
-func mergeRequestMutation(dst, src *RequestMutation) {
+func mergeRequestMutation(dst, src *executor.RequestMutation) {
 	if src.URL != nil {
 		dst.URL = src.URL
 	}
@@ -346,7 +348,7 @@ func mergeRequestMutation(dst, src *RequestMutation) {
 }
 
 // mergeResponseMutation 合并响应变更
-func mergeResponseMutation(dst, src *ResponseMutation) {
+func mergeResponseMutation(dst, src *executor.ResponseMutation) {
 	if src.StatusCode != nil {
 		dst.StatusCode = src.StatusCode
 	}
@@ -363,7 +365,7 @@ func mergeResponseMutation(dst, src *ResponseMutation) {
 }
 
 // hasRequestMutation 检查请求变更是否有效
-func hasRequestMutation(m *RequestMutation) bool {
+func hasRequestMutation(m *executor.RequestMutation) bool {
 	return m.URL != nil || m.Method != nil ||
 		len(m.Headers) > 0 || len(m.Query) > 0 || len(m.Cookies) > 0 ||
 		len(m.RemoveHeaders) > 0 || len(m.RemoveQuery) > 0 || len(m.RemoveCookies) > 0 ||
@@ -371,7 +373,7 @@ func hasRequestMutation(m *RequestMutation) bool {
 }
 
 // hasResponseMutation 检查响应变更是否有效
-func hasResponseMutation(m *ResponseMutation) bool {
+func hasResponseMutation(m *executor.ResponseMutation) bool {
 	return m.StatusCode != nil || len(m.Headers) > 0 || len(m.RemoveHeaders) > 0 || m.Body != nil
 }
 
@@ -434,7 +436,7 @@ func (m *Manager) degradeAndContinue(ts *targetSession, ev *fetch.RequestPausedR
 	m.log.Warn("执行降级策略：直接放行", "target", string(ts.id), "reason", reason, "requestID", ev.RequestID)
 	ctx, cancel := context.WithTimeout(ts.ctx, 1*time.Second)
 	defer cancel()
-	m.executor.ContinueRequest(ctx, ts, ev)
+	m.executor.ContinueRequest(ctx, ts.client, ev)
 	// 降级时发送未匹配事件
 	stage := rulespec.StageRequest
 	statusCode := 0
@@ -488,7 +490,7 @@ func (m *Manager) sendUnmatchedEvent(target domain.TargetID, ev *fetch.RequestPa
 	_ = json.Unmarshal(ev.Request.Headers, &requestInfo.Headers)
 
 	// 获取请求体
-	requestInfo.Body = GetRequestBody(ev)
+	requestInfo.Body = protocol.GetRequestBody(ev)
 
 	// 响应信息
 	responseInfo := domain.ResponseInfo{
@@ -527,12 +529,4 @@ func (m *Manager) sendUnmatchedEvent(target domain.TargetID, ev *fetch.RequestPa
 	case m.events <- evt:
 	default:
 	}
-}
-
-// getStatusCode 获取响应状态码
-func getStatusCode(ev *fetch.RequestPausedReply) int {
-	if ev.ResponseStatusCode != nil {
-		return *ev.ResponseStatusCode
-	}
-	return 0
 }
