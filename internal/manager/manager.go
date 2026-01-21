@@ -17,7 +17,7 @@ import (
 type Manager struct {
 	devtoolsURL string
 	log         logger.Logger
-	targetsMu   sync.Mutex
+	mu          sync.Mutex
 	targets     map[domain.TargetID]*Session
 }
 
@@ -44,8 +44,8 @@ func New(devtoolsURL string, log logger.Logger) *Manager {
 
 // AttachTarget 附加到指定浏览器目标并建立 CDP 会话
 func (m *Manager) AttachTarget(target domain.TargetID) (*Session, error) {
-	m.targetsMu.Lock()
-	defer m.targetsMu.Unlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	if m.devtoolsURL == "" {
 		return nil, fmt.Errorf("devtools url empty")
@@ -94,8 +94,8 @@ func (m *Manager) AttachTarget(target domain.TargetID) (*Session, error) {
 
 // Detach 断开单个目标连接并释放资源
 func (m *Manager) Detach(target domain.TargetID) error {
-	m.targetsMu.Lock()
-	defer m.targetsMu.Unlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	session, ok := m.targets[target]
 	if !ok {
@@ -108,8 +108,8 @@ func (m *Manager) Detach(target domain.TargetID) error {
 
 // DetachAll 断开所有目标连接并释放资源
 func (m *Manager) DetachAll() error {
-	m.targetsMu.Lock()
-	defer m.targetsMu.Unlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	for id, session := range m.targets {
 		m.closeSession(session)
@@ -120,16 +120,16 @@ func (m *Manager) DetachAll() error {
 
 // GetSession 获取指定目标的会话
 func (m *Manager) GetSession(target domain.TargetID) (*Session, bool) {
-	m.targetsMu.Lock()
-	defer m.targetsMu.Unlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	session, ok := m.targets[target]
 	return session, ok
 }
 
 // GetAllSessions 获取所有会话
 func (m *Manager) GetAllSessions() map[domain.TargetID]*Session {
-	m.targetsMu.Lock()
-	defer m.targetsMu.Unlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	// 返回副本，避免外部修改
 	sessions := make(map[domain.TargetID]*Session, len(m.targets))
@@ -151,8 +151,8 @@ func (m *Manager) ListTargets(ctx context.Context) ([]domain.TargetInfo, error) 
 		return nil, err
 	}
 
-	m.targetsMu.Lock()
-	defer m.targetsMu.Unlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	out := make([]domain.TargetInfo, 0, len(targets))
 	for i := range targets {

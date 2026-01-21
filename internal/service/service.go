@@ -7,12 +7,19 @@ import (
 	"sync"
 	"time"
 
-	"cdpnetool/internal/cdp"
+	"cdpnetool/internal/executor"
+	"cdpnetool/internal/handler"
+	"cdpnetool/internal/interceptor"
 	"cdpnetool/internal/logger"
+	"cdpnetool/internal/manager"
+	"cdpnetool/internal/pool"
+	"cdpnetool/internal/rules"
 	"cdpnetool/pkg/domain"
 	"cdpnetool/pkg/rulespec"
 
 	"github.com/google/uuid"
+	"github.com/mafredri/cdp"
+	"github.com/mafredri/cdp/protocol/fetch"
 )
 
 type svc struct {
@@ -26,7 +33,12 @@ type session struct {
 	cfg    domain.SessionConfig
 	config *rulespec.Config
 	events chan domain.InterceptEvent
-	mgr    *cdp.Manager
+
+	mgr      *manager.Manager
+	intr     *interceptor.Interceptor
+	h        *handler.Handler
+	engine   *rules.Engine
+	workPool *pool.Pool
 }
 
 // New 创建并返回服务层实例
@@ -37,7 +49,7 @@ func New(l logger.Logger) *svc {
 	return &svc{sessions: make(map[domain.SessionID]*session), log: l}
 }
 
-// StartSession 创建新会话并初始化管理器
+// StartSession 创建新会话并初始化组件
 func (s *svc) StartSession(cfg domain.SessionConfig) (domain.SessionID, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -56,19 +68,58 @@ func (s *svc) StartSession(cfg domain.SessionConfig) (domain.SessionID, error) {
 	}
 
 	id := domain.SessionID(uuid.New().String())
-	ses := &session{
-		id:     id,
-		cfg:    cfg,
-		events: make(chan domain.InterceptEvent, cfg.PendingCapacity),
+	events := make(chan domain.InterceptEvent, cfg.PendingCapacity)
+
+	// 会话内组件
+	mgr := manager.New(cfg.DevToolsURL, s.log)
+	exec := executor.New()
+	h := handler.New(handler.Config{
+		Engine:           nil,
+		Executor:         exec,
+		Events:           events,
+		ProcessTimeoutMS: cfg.ProcessTimeoutMS,
+		Logger:           s.log,
+	})
+
+	// 拦截器回调：通过 manager 反查 targetID，再交给 handler 处理
+	intrHandler := func(client *cdp.Client, ctx context.Context, ev *fetch.RequestPausedReply) {
+		var targetID domain.TargetID
+		if mgr != nil {
+			for id, sess := range mgr.GetAllSessions() {
+				if sess != nil && sess.Client == client {
+					targetID = id
+					break
+				}
+			}
+		}
+		h.Handle(client, ctx, targetID, ev)
 	}
-	ses.mgr = cdp.New(cfg.DevToolsURL, ses.events, s.log)
-	ses.mgr.SetConcurrency(cfg.Concurrency, cfg.PendingCapacity)
-	ses.mgr.SetRuntime(cfg.BodySizeThreshold, cfg.ProcessTimeoutMS)
+	intr := interceptor.New(intrHandler, s.log)
+
+	// 并发工作池
+	workPool := pool.New(cfg.Concurrency, cfg.PendingCapacity)
+	if workPool != nil && workPool.IsEnabled() {
+		workPool.SetLogger(s.log)
+		intr.SetPool(workPool)
+	}
+
+	ses := &session{
+		id:       id,
+		cfg:      cfg,
+		config:   nil,
+		events:   events,
+		mgr:      mgr,
+		intr:     intr,
+		h:        h,
+		engine:   nil,
+		workPool: workPool,
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	_, err := ses.mgr.ListTargets(ctx)
+	// 探活 DevTools
+	_, err := mgr.ListTargets(ctx)
 	if err != nil {
 		s.log.Err(err, "连接 DevTools 失败", "devtools", cfg.DevToolsURL)
 		return "", fmt.Errorf("无法连接到 DevTools: %w", err)
@@ -92,7 +143,16 @@ func (s *svc) StopSession(id domain.SessionID) error {
 		return errors.New("cdpnetool: session not found")
 	}
 	if ses.mgr != nil {
-		_ = ses.mgr.Disable()
+		// 停用拦截并分离所有目标
+		if ses.intr != nil {
+			sessions := ses.mgr.GetAllSessions()
+			for _, ms := range sessions {
+				_ = ses.intr.DisableTarget(ms.Client, ms.Ctx)
+			}
+			if ses.workPool != nil {
+				ses.workPool.Stop()
+			}
+		}
 		_ = ses.mgr.DetachAll()
 	}
 	close(ses.events)
@@ -110,15 +170,19 @@ func (s *svc) AttachTarget(id domain.SessionID, target domain.TargetID) error {
 	}
 
 	if ses.mgr == nil {
-		ses.mgr = cdp.New(ses.cfg.DevToolsURL, ses.events, s.log)
-		ses.mgr.SetConcurrency(ses.cfg.Concurrency, ses.cfg.PendingCapacity)
-		ses.mgr.SetRuntime(ses.cfg.BodySizeThreshold, ses.cfg.ProcessTimeoutMS)
+		return errors.New("cdpnetool: manager not initialized")
 	}
 
-	err := ses.mgr.AttachTarget(target)
+	// 附加目标
+	ms, err := ses.mgr.AttachTarget(target)
 	if err != nil {
 		s.log.Err(err, "附加浏览器目标失败", "session", string(id))
 		return err
+	}
+
+	// 如果已启用拦截，对新目标立即启用
+	if ses.intr != nil && ses.intr.IsEnabled() {
+		_ = ses.intr.EnableTarget(ms.Client, ms.Ctx)
 	}
 
 	s.log.Info("附加浏览器目标成功", "session", string(id), "target", string(target))
@@ -149,9 +213,7 @@ func (s *svc) ListTargets(id domain.SessionID) ([]domain.TargetInfo, error) {
 	}
 
 	if ses.mgr == nil {
-		ses.mgr = cdp.New(ses.cfg.DevToolsURL, ses.events, s.log)
-		ses.mgr.SetConcurrency(ses.cfg.Concurrency, ses.cfg.PendingCapacity)
-		ses.mgr.SetRuntime(ses.cfg.BodySizeThreshold, ses.cfg.ProcessTimeoutMS)
+		return nil, errors.New("cdpnetool: manager not initialized")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -167,16 +229,20 @@ func (s *svc) EnableInterception(id domain.SessionID) error {
 	if !ok {
 		return errors.New("cdpnetool: session not found")
 	}
-	if ses.mgr == nil {
+	if ses.mgr == nil || ses.intr == nil {
 		return errors.New("cdpnetool: manager not initialized")
 	}
-	err := ses.mgr.Enable()
-	if err == nil {
-		s.log.Info("启用会话拦截成功", "session", string(id))
-	} else {
-		s.log.Err(err, "启用会话拦截失败", "session", string(id))
+
+	ses.intr.SetEnabled(true)
+	// 为当前所有目标启用拦截
+	for _, ms := range ses.mgr.GetAllSessions() {
+		if err := ses.intr.EnableTarget(ms.Client, ms.Ctx); err != nil {
+			s.log.Err(err, "为目标启用拦截失败", "session", string(id), "target", string(ms.ID))
+		}
 	}
-	return err
+
+	s.log.Info("启用会话拦截成功", "session", string(id))
+	return nil
 }
 
 // DisableInterception 停用会话的拦截功能
@@ -187,16 +253,22 @@ func (s *svc) DisableInterception(id domain.SessionID) error {
 	if !ok {
 		return errors.New("cdpnetool: session not found")
 	}
-	if ses.mgr == nil {
+	if ses.mgr == nil || ses.intr == nil {
 		return errors.New("cdpnetool: manager not initialized")
 	}
-	err := ses.mgr.Disable()
-	if err == nil {
-		s.log.Info("停用会话拦截成功", "session", string(id))
-	} else {
-		s.log.Err(err, "停用会话拦截失败", "session", string(id))
+
+	ses.intr.SetEnabled(false)
+	for _, ms := range ses.mgr.GetAllSessions() {
+		if err := ses.intr.DisableTarget(ms.Client, ms.Ctx); err != nil {
+			s.log.Err(err, "停用目标拦截失败", "session", string(id), "target", string(ms.ID))
+		}
 	}
-	return err
+	if ses.workPool != nil {
+		ses.workPool.Stop()
+	}
+
+	s.log.Info("停用会话拦截成功", "session", string(id))
+	return nil
 }
 
 // LoadRules 为会话加载规则配置并应用到管理器
@@ -209,8 +281,14 @@ func (s *svc) LoadRules(id domain.SessionID, cfg *rulespec.Config) error {
 	}
 	ses.config = cfg
 	s.log.Info("加载规则配置完成", "session", string(id), "count", len(cfg.Rules), "version", cfg.Version)
-	if ses.mgr != nil {
-		ses.mgr.UpdateRules(cfg)
+
+	if ses.engine == nil {
+		ses.engine = rules.New(cfg)
+		if ses.h != nil {
+			ses.h.SetEngine(ses.engine)
+		}
+	} else {
+		ses.engine.Update(cfg)
 	}
 	return nil
 }
@@ -223,10 +301,21 @@ func (s *svc) GetRuleStats(id domain.SessionID) (domain.EngineStats, error) {
 	if !ok {
 		return domain.EngineStats{ByRule: make(map[domain.RuleID]int64)}, nil
 	}
-	if ses.mgr == nil {
+	if ses.engine == nil {
 		return domain.EngineStats{ByRule: make(map[domain.RuleID]int64)}, nil
 	}
-	return ses.mgr.GetStats(), nil
+
+	stats := ses.engine.GetStats()
+	byRule := make(map[domain.RuleID]int64, len(stats.ByRule))
+	for k, v := range stats.ByRule {
+		byRule[domain.RuleID(k)] = v
+	}
+
+	return domain.EngineStats{
+		Total:   stats.Total,
+		Matched: stats.Matched,
+		ByRule:  byRule,
+	}, nil
 }
 
 // SubscribeEvents 订阅会话事件流
