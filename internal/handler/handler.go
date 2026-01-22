@@ -14,7 +14,6 @@ import (
 	"cdpnetool/pkg/domain"
 	"cdpnetool/pkg/rulespec"
 
-	"github.com/google/uuid"
 	"github.com/mafredri/cdp"
 	"github.com/mafredri/cdp/protocol/fetch"
 )
@@ -56,64 +55,73 @@ func New(cfg Config) *Handler {
 	}
 }
 
-// Handle 处理一次拦截事件并根据规则执行相应动作
-func (h *Handler) Handle(
+// HandleRequest 处理请求拦截
+func (h *Handler) HandleRequest(
 	client *cdp.Client,
 	ctx context.Context,
 	targetID domain.TargetID,
 	ev *fetch.RequestPausedReply,
+	l logger.Logger,
 ) {
-	// 创建一个带超时的上下文
-	to := h.processTimeoutMS
-	if to <= 0 {
-		to = 3000
-	}
-	ctx2, cancel := context.WithTimeout(ctx, time.Duration(to)*time.Millisecond)
-	defer cancel()
+	l.Debug("开始处理请求拦截", "method", ev.Request.Method)
 
-	traceID := uuid.New().String()
-	l := h.log.With(
-		"traceID", traceID,
-		"url", ev.Request.URL,
-		"requestID", string(ev.RequestID),
-	)
-
-	// 判断阶段
-	stage := rulespec.StageRequest
-	statusCode := 0
-	if ev.ResponseStatusCode != nil {
-		stage = rulespec.StageResponse
-		statusCode = *ev.ResponseStatusCode
-	}
-
-	l.Debug("开始处理拦截事件", "stage", stage, "method", ev.Request.Method)
-
-	// 构建评估上下文（基于请求信息）
 	evalCtx := h.buildEvalContext(ev)
-
-	// 评估匹配规则
 	if h.engine == nil {
-		h.sendUnmatchedEvent(targetID, ev, stage, statusCode)
-		h.executor.ContinueRequest(ctx2, client, ev)
+		h.sendUnmatchedRequestEvent(targetID, ev)
+		h.executor.ContinueRequest(ctx, client, ev)
 		return
 	}
 
 	start := time.Now()
-	matchedRules := h.engine.EvalForStage(evalCtx, stage)
+	matchedRules := h.engine.EvalForStage(evalCtx, rulespec.StageRequest)
 	if len(matchedRules) == 0 {
-		h.sendUnmatchedEvent(targetID, ev, stage, statusCode)
-		if stage == rulespec.StageRequest {
-			h.executor.ContinueRequest(ctx2, client, ev)
-		} else {
-			h.executor.ContinueResponse(ctx2, client, ev)
-		}
-		l.Debug("拦截事件处理完成，无匹配规则", "stage", stage, "duration", time.Since(start))
+		h.sendUnmatchedRequestEvent(targetID, ev)
+		h.executor.ContinueRequest(ctx, client, ev)
+		l.Debug("请求处理完成，无匹配规则", "duration", time.Since(start))
 		return
 	}
 
-	// 有匹配规则 - 捕获原始数据
-	requestInfo, responseInfo := h.captureOriginalData(client, ctx2, ev, stage)
+	requestInfo := h.captureRequestData(ev)
+	stageCtx := StageContext{
+		MatchedRules: matchedRules,
+		RequestInfo:  requestInfo,
+		Start:        start,
+	}
 
+	h.executeRequestStageWithTracking(ctx, client, targetID, ev, stageCtx, l)
+}
+
+// HandleResponse 处理响应拦截
+func (h *Handler) HandleResponse(
+	client *cdp.Client,
+	ctx context.Context,
+	targetID domain.TargetID,
+	ev *fetch.RequestPausedReply,
+	l logger.Logger,
+) {
+	statusCode := 0
+	if ev.ResponseStatusCode != nil {
+		statusCode = *ev.ResponseStatusCode
+	}
+	l.Debug("开始处理响应拦截", "statusCode", statusCode)
+
+	evalCtx := h.buildEvalContext(ev)
+	if h.engine == nil {
+		h.sendUnmatchedResponseEvent(targetID, ev, statusCode)
+		h.executor.ContinueResponse(ctx, client, ev)
+		return
+	}
+
+	start := time.Now()
+	matchedRules := h.engine.EvalForStage(evalCtx, rulespec.StageResponse)
+	if len(matchedRules) == 0 {
+		h.sendUnmatchedResponseEvent(targetID, ev, statusCode)
+		h.executor.ContinueResponse(ctx, client, ev)
+		l.Debug("响应处理完成，无匹配规则", "duration", time.Since(start))
+		return
+	}
+
+	requestInfo, responseInfo := h.captureResponseData(client, ctx, ev)
 	stageCtx := StageContext{
 		MatchedRules: matchedRules,
 		RequestInfo:  requestInfo,
@@ -121,12 +129,7 @@ func (h *Handler) Handle(
 		Start:        start,
 	}
 
-	// 执行所有匹配规则的行为
-	if stage == rulespec.StageRequest {
-		h.executeRequestStageWithTracking(ctx2, client, targetID, ev, stageCtx, l)
-	} else {
-		h.executeResponseStageWithTracking(ctx2, client, targetID, ev, stageCtx, l)
-	}
+	h.executeResponseStageWithTracking(ctx, client, targetID, ev, stageCtx, l)
 }
 
 // executeRequestStageWithTracking 执行请求阶段的行为并跟踪变更
@@ -340,13 +343,8 @@ func (h *Handler) sendMatchedEvent(
 	}
 }
 
-// sendUnmatchedEvent 发送未匹配事件
-func (h *Handler) sendUnmatchedEvent(
-	targetID domain.TargetID,
-	ev *fetch.RequestPausedReply,
-	stage rulespec.Stage,
-	statusCode int,
-) {
+// sendUnmatchedRequestEvent 发送未匹配的请求事件
+func (h *Handler) sendUnmatchedRequestEvent(targetID domain.TargetID, ev *fetch.RequestPausedReply) {
 	if h.events == nil {
 		return
 	}
@@ -357,7 +355,34 @@ func (h *Handler) sendUnmatchedEvent(
 		Headers:      make(map[string]string),
 		ResourceType: string(ev.ResourceType),
 	}
+	_ = json.Unmarshal(ev.Request.Headers, &requestInfo.Headers)
+	requestInfo.Body = protocol.GetRequestBody(ev)
 
+	evt := domain.NetworkEvent{
+		Target:    targetID,
+		Timestamp: time.Now().UnixMilli(),
+		IsMatched: false,
+		Request:   requestInfo,
+	}
+
+	select {
+	case h.events <- evt:
+	default:
+	}
+}
+
+// sendUnmatchedResponseEvent 发送未匹配的响应事件
+func (h *Handler) sendUnmatchedResponseEvent(targetID domain.TargetID, ev *fetch.RequestPausedReply, statusCode int) {
+	if h.events == nil {
+		return
+	}
+
+	requestInfo := domain.RequestInfo{
+		URL:          ev.Request.URL,
+		Method:       ev.Request.Method,
+		Headers:      make(map[string]string),
+		ResourceType: string(ev.ResourceType),
+	}
 	_ = json.Unmarshal(ev.Request.Headers, &requestInfo.Headers)
 	requestInfo.Body = protocol.GetRequestBody(ev)
 
@@ -365,17 +390,11 @@ func (h *Handler) sendUnmatchedEvent(
 		StatusCode: statusCode,
 		Headers:    make(map[string]string),
 	}
-
-	if stage == rulespec.StageResponse {
-		for _, h := range ev.ResponseHeaders {
-			responseInfo.Headers[h.Name] = h.Value
-		}
-		// 未匹配场景下暂不获取响应体
-		responseInfo.Body = ""
+	for _, h := range ev.ResponseHeaders {
+		responseInfo.Headers[h.Name] = h.Value
 	}
 
 	evt := domain.NetworkEvent{
-		Session:   "", // 会在上层填充
 		Target:    targetID,
 		Timestamp: time.Now().UnixMilli(),
 		IsMatched: false,
@@ -389,38 +408,40 @@ func (h *Handler) sendUnmatchedEvent(
 	}
 }
 
-// captureOriginalData 捕获原始请求/响应数据
-func (h *Handler) captureOriginalData(
-	client *cdp.Client,
-	ctx context.Context,
-	ev *fetch.RequestPausedReply,
-	stage rulespec.Stage,
-) (domain.RequestInfo, domain.ResponseInfo) {
+// captureRequestData 捕获原始请求数据
+func (h *Handler) captureRequestData(ev *fetch.RequestPausedReply) domain.RequestInfo {
 	requestInfo := domain.RequestInfo{
 		URL:          ev.Request.URL,
 		Method:       ev.Request.Method,
 		Headers:      make(map[string]string),
 		ResourceType: string(ev.ResourceType),
 	}
-
 	_ = json.Unmarshal(ev.Request.Headers, &requestInfo.Headers)
 	requestInfo.Body = protocol.GetRequestBody(ev)
+	return requestInfo
+}
+
+// captureResponseData 捕获原始请求/响应数据
+func (h *Handler) captureResponseData(
+	client *cdp.Client,
+	ctx context.Context,
+	ev *fetch.RequestPausedReply,
+) (domain.RequestInfo, domain.ResponseInfo) {
+	requestInfo := h.captureRequestData(ev)
 
 	responseInfo := domain.ResponseInfo{
 		Headers: make(map[string]string),
 	}
 
-	if stage == rulespec.StageResponse {
-		if ev.ResponseStatusCode != nil {
-			responseInfo.StatusCode = *ev.ResponseStatusCode
-		}
-		for _, h := range ev.ResponseHeaders {
-			responseInfo.Headers[h.Name] = h.Value
-		}
-		// 响应体需要单独获取
-		body, _ := h.executor.FetchResponseBody(ctx, client, ev.RequestID)
-		responseInfo.Body = body
+	if ev.ResponseStatusCode != nil {
+		responseInfo.StatusCode = *ev.ResponseStatusCode
 	}
+	for _, h := range ev.ResponseHeaders {
+		responseInfo.Headers[h.Name] = h.Value
+	}
+	// 响应体需要单独获取
+	body, _ := h.executor.FetchResponseBody(ctx, client, ev.RequestID)
+	responseInfo.Body = body
 
 	return requestInfo, responseInfo
 }

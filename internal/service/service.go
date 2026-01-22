@@ -88,11 +88,33 @@ func (s *svc) StartSession(ctx context.Context, cfg domain.SessionConfig) (domai
 
 	// 拦截器回调
 	intrHandler := func(client *cdp.Client, handlerCtx context.Context, ev *fetch.RequestPausedReply) {
+		// 1. 准备基础设施 (TraceID, Logger, Timeout)
+		traceID := uuid.New().String()
+		l := s.log.With(
+			"traceID", traceID,
+			"url", ev.Request.URL,
+			"requestID", string(ev.RequestID),
+		)
+
+		to := cfg.ProcessTimeoutMS
+		if to <= 0 {
+			to = 3000
+		}
+		ctx, cancel := context.WithTimeout(handlerCtx, time.Duration(to)*time.Millisecond)
+		defer cancel()
+
+		// 2. 获取 TargetID
 		var targetID domain.TargetID
 		if mgr != nil {
 			targetID = mgr.GetTargetIDByClient(client)
 		}
-		h.Handle(client, handlerCtx, targetID, ev)
+
+		// 3. 根据阶段分发处理
+		if ev.ResponseStatusCode == nil {
+			h.HandleRequest(client, ctx, targetID, ev, l)
+		} else {
+			h.HandleResponse(client, ctx, targetID, ev, l)
+		}
 	}
 	intr := interceptor.New(intrHandler, s.log)
 
