@@ -117,7 +117,7 @@ func (s *svc) StartSession(cfg domain.SessionConfig) (domain.SessionID, error) {
 	_, err := mgr.ListTargets(ctx)
 	if err != nil {
 		s.log.Err(err, "连接 DevTools 失败", "devtools", cfg.DevToolsURL)
-		return "", fmt.Errorf("无法连接到 DevTools: %w", err)
+		return "", fmt.Errorf("%w: %v", domain.ErrDevToolsUnreachable, err)
 	}
 
 	s.sessions[id] = ses
@@ -135,7 +135,7 @@ func (s *svc) StopSession(id domain.SessionID) error {
 	}
 	s.mu.Unlock()
 	if !ok {
-		return errors.New("cdpnetool: session not found")
+		return domain.ErrSessionNotFound
 	}
 	if ses.mgr != nil {
 		// 停用拦截并分离所有目标
@@ -161,7 +161,7 @@ func (s *svc) AttachTarget(id domain.SessionID, target domain.TargetID) error {
 	ses, ok := s.sessions[id]
 	s.mu.Unlock()
 	if !ok {
-		return errors.New("cdpnetool: session not found")
+		return domain.ErrSessionNotFound
 	}
 
 	if ses.mgr == nil {
@@ -190,7 +190,7 @@ func (s *svc) DetachTarget(id domain.SessionID, target domain.TargetID) error {
 	ses, ok := s.sessions[id]
 	s.mu.Unlock()
 	if !ok {
-		return errors.New("cdpnetool: session not found")
+		return domain.ErrSessionNotFound
 	}
 	if ses.mgr != nil {
 		return ses.mgr.Detach(target)
@@ -204,7 +204,7 @@ func (s *svc) ListTargets(id domain.SessionID) ([]domain.TargetInfo, error) {
 	ses, ok := s.sessions[id]
 	s.mu.Unlock()
 	if !ok {
-		return nil, errors.New("cdpnetool: session not found")
+		return nil, domain.ErrSessionNotFound
 	}
 
 	if ses.mgr == nil {
@@ -222,10 +222,22 @@ func (s *svc) EnableInterception(id domain.SessionID) error {
 	ses, ok := s.sessions[id]
 	s.mu.Unlock()
 	if !ok {
-		return errors.New("cdpnetool: session not found")
+		return domain.ErrSessionNotFound
 	}
 	if ses.mgr == nil || ses.intr == nil {
 		return errors.New("cdpnetool: manager not initialized")
+	}
+
+	// 业务校验：至少需要附加一个目标
+	hasAttached := false
+	for _, ms := range ses.mgr.GetAttachedTargets() {
+		if ms != nil {
+			hasAttached = true
+			break
+		}
+	}
+	if !hasAttached {
+		return domain.ErrNoTargetAttached
 	}
 
 	ses.intr.SetEnabled(true)
@@ -246,7 +258,7 @@ func (s *svc) DisableInterception(id domain.SessionID) error {
 	ses, ok := s.sessions[id]
 	s.mu.Unlock()
 	if !ok {
-		return errors.New("cdpnetool: session not found")
+		return domain.ErrSessionNotFound
 	}
 	if ses.mgr == nil || ses.intr == nil {
 		return errors.New("cdpnetool: manager not initialized")
@@ -272,7 +284,7 @@ func (s *svc) LoadRules(id domain.SessionID, cfg *rulespec.Config) error {
 	defer s.mu.Unlock()
 	ses, ok := s.sessions[id]
 	if !ok {
-		return errors.New("cdpnetool: session not found")
+		return domain.ErrSessionNotFound
 	}
 	ses.config = cfg
 	s.log.Info("加载规则配置完成", "session", string(id), "count", len(cfg.Rules), "version", cfg.Version)
@@ -319,7 +331,7 @@ func (s *svc) SubscribeEvents(id domain.SessionID) (<-chan domain.NetworkEvent, 
 	ses, ok := s.sessions[id]
 	s.mu.Unlock()
 	if !ok {
-		return nil, errors.New("cdpnetool: session not found")
+		return nil, domain.ErrSessionNotFound
 	}
 	return ses.events, nil
 }

@@ -23,17 +23,18 @@ import (
 
 // App 是暴露给前端的 Wails 方法集合，负责管理会话、浏览器、配置和事件。
 type App struct {
-	ctx            context.Context
-	cfg            *config.Config
-	log            logger.Logger
-	service        api.Service
-	currentSession domain.SessionID
-	browser        *browser.Browser
-	gdb            *gorm.DB
-	settingsRepo   *repo.SettingsRepo
-	configRepo     *repo.ConfigRepo
-	eventRepo      *repo.EventRepo
-	isDirty        bool
+	ctx             context.Context
+	cfg             *config.Config
+	log             logger.Logger
+	service         api.Service
+	currentSession  domain.SessionID
+	browser         *browser.Browser
+	gdb             *gorm.DB
+	settingsRepo    *repo.SettingsRepo
+	configRepo      *repo.ConfigRepo
+	eventRepo       *repo.EventRepo
+	isDirty         bool
+	cancelSubscribe context.CancelFunc
 }
 
 // NewApp 创建并返回一个新的 App 实例。
@@ -91,6 +92,11 @@ func (a *App) Startup(ctx context.Context) {
 func (a *App) Shutdown(ctx context.Context) {
 	a.log.Info("应用关闭中...")
 
+	// 取消事件订阅
+	if a.cancelSubscribe != nil {
+		a.cancelSubscribe()
+	}
+
 	if a.currentSession != "" {
 		if err := a.service.StopSession(a.currentSession); err != nil {
 			a.log.Err(err, "停止会话失败", "sessionID", a.currentSession)
@@ -119,100 +125,95 @@ func (a *App) Shutdown(ctx context.Context) {
 	a.log.Info("应用已关闭")
 }
 
-// SessionResult 表示返回给前端的会话操作结果。
-type SessionResult struct {
-	SessionID string `json:"sessionId"`
-	Success   bool   `json:"success"`
-	Error     string `json:"error,omitempty"`
-}
-
 // StartSession 创建新的拦截会话，并启动事件订阅。
-func (a *App) StartSession(devToolsURL string) SessionResult {
+func (a *App) StartSession(devToolsURL string) api.Response[SessionData] {
 	a.log.Info("启动会话", "devToolsURL", devToolsURL)
+
+	// 停止旧的订阅
+	if a.cancelSubscribe != nil {
+		a.cancelSubscribe()
+		a.cancelSubscribe = nil
+	}
 
 	cfg := domain.SessionConfig{DevToolsURL: devToolsURL}
 	sid, err := a.service.StartSession(cfg)
 	if err != nil {
-		a.log.Err(err, "启动会话失败")
-		return SessionResult{Success: false, Error: fmt.Sprintf("启动会话失败: %v", err)}
+		code, msg := a.TranslateError(err)
+		return api.Fail[SessionData](code, msg)
 	}
 
 	a.currentSession = sid
+
 	// 启动事件订阅
-	go a.subscribeEvents(sid)
+	ctx, cancel := context.WithCancel(context.Background())
+	a.cancelSubscribe = cancel
+	go a.subscribeEvents(ctx, sid)
 
 	a.log.Info("会话启动成功", "sessionID", sid)
-	return SessionResult{SessionID: string(sid), Success: true}
+	return api.OK(SessionData{SessionID: string(sid)})
 }
 
 // StopSession 停止指定的会话。
-func (a *App) StopSession(sessionID string) SessionResult {
+func (a *App) StopSession(sessionID string) api.Response[api.EmptyData] {
 	a.log.Info("停止会话", "sessionID", sessionID)
+
+	// 取消事件订阅
+	if a.cancelSubscribe != nil {
+		a.cancelSubscribe()
+		a.cancelSubscribe = nil
+	}
 
 	err := a.service.StopSession(domain.SessionID(sessionID))
 	if err != nil {
-		a.log.Err(err, "停止会话失败", "sessionID", sessionID)
-		return SessionResult{Success: false, Error: err.Error()}
+		code, msg := a.TranslateError(err)
+		return api.Fail[api.EmptyData](code, msg)
 	}
 
 	if a.currentSession == domain.SessionID(sessionID) {
 		a.currentSession = ""
 	}
 
-	return SessionResult{Success: true}
+	return api.OK(api.EmptyData{})
 }
 
 // GetCurrentSession 返回当前活跃会话的 ID。
-func (a *App) GetCurrentSession() string {
-	return string(a.currentSession)
-}
-
-// TargetListResult 表示返回给前端的目标列表结果。
-type TargetListResult struct {
-	Targets []domain.TargetInfo `json:"targets"`
-	Success bool                `json:"success"`
-	Error   string              `json:"error,omitempty"`
+func (a *App) GetCurrentSession() api.Response[SessionData] {
+	return api.OK(SessionData{SessionID: string(a.currentSession)})
 }
 
 // ListTargets 列出指定会话中的浏览器页面目标。
-func (a *App) ListTargets(sessionID string) TargetListResult {
+func (a *App) ListTargets(sessionID string) api.Response[TargetListData] {
 	targets, err := a.service.ListTargets(domain.SessionID(sessionID))
 	if err != nil {
-		a.log.Err(err, "列出目标失败", "sessionID", sessionID)
-		return TargetListResult{Success: false, Error: err.Error()}
+		code, msg := a.TranslateError(err)
+		return api.Fail[TargetListData](code, msg)
 	}
 
-	return TargetListResult{Targets: targets, Success: true}
-}
-
-// OperationResult 表示通用操作的结果。
-type OperationResult struct {
-	Success bool   `json:"success"`
-	Error   string `json:"error,omitempty"`
+	return api.OK(TargetListData{Targets: targets})
 }
 
 // AttachTarget 附加指定页面目标到会话进行拦截。
-func (a *App) AttachTarget(sessionID, targetID string) OperationResult {
+func (a *App) AttachTarget(sessionID, targetID string) api.Response[api.EmptyData] {
 	err := a.service.AttachTarget(domain.SessionID(sessionID), domain.TargetID(targetID))
 	if err != nil {
-		a.log.Err(err, "附加目标失败", "sessionID", sessionID, "targetID", targetID)
-		return OperationResult{Success: false, Error: err.Error()}
+		code, msg := a.TranslateError(err)
+		return api.Fail[api.EmptyData](code, msg)
 	}
 
 	a.log.Debug("已附加目标", "targetID", targetID)
-	return OperationResult{Success: true}
+	return api.OK(api.EmptyData{})
 }
 
 // DetachTarget 从会话中移除指定页面目标。
-func (a *App) DetachTarget(sessionID, targetID string) OperationResult {
+func (a *App) DetachTarget(sessionID, targetID string) api.Response[api.EmptyData] {
 	err := a.service.DetachTarget(domain.SessionID(sessionID), domain.TargetID(targetID))
 	if err != nil {
-		a.log.Err(err, "移除目标失败", "sessionID", sessionID, "targetID", targetID)
-		return OperationResult{Success: false, Error: err.Error()}
+		code, msg := a.TranslateError(err)
+		return api.Fail[api.EmptyData](code, msg)
 	}
 
 	a.log.Debug("已移除目标", "targetID", targetID)
-	return OperationResult{Success: true}
+	return api.OK(api.EmptyData{})
 }
 
 // SetDirty 供前端更新未保存状态
@@ -244,7 +245,7 @@ func (a *App) BeforeClose(ctx context.Context) bool {
 }
 
 // ExportConfig 弹出原生保存对话框导出配置
-func (a *App) ExportConfig(name, rulesJSON string) OperationResult {
+func (a *App) ExportConfig(name, rulesJSON string) api.Response[api.EmptyData] {
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		DefaultFilename: name + ".json",
 		Title:           "导出配置",
@@ -254,98 +255,78 @@ func (a *App) ExportConfig(name, rulesJSON string) OperationResult {
 	})
 
 	if err != nil {
-		return OperationResult{Success: false, Error: err.Error()}
+		code, msg := a.TranslateError(err)
+		return api.Fail[api.EmptyData](code, msg)
 	}
 
 	if path == "" {
-		return OperationResult{Success: true} // 用户取消
+		return api.OK(api.EmptyData{})
 	}
 
 	err = os.WriteFile(path, []byte(rulesJSON), 0644)
 	if err != nil {
-		return OperationResult{Success: false, Error: "文件写入失败: " + err.Error()}
+		code, msg := a.TranslateError(err)
+		return api.Fail[api.EmptyData](code, msg)
 	}
 
-	return OperationResult{Success: true}
+	return api.OK(api.EmptyData{})
 }
 
 // EnableInterception 启用指定会话的网络拦截功能。
-func (a *App) EnableInterception(sessionID string) OperationResult {
-	targets, err := a.service.ListTargets(domain.SessionID(sessionID))
-	hasAttached := false
-	if err == nil {
-		for _, t := range targets {
-			if t.IsCurrent {
-				hasAttached = true
-				break
-			}
-		}
-	}
-
-	if !hasAttached {
-		return OperationResult{Success: false, Error: "请先在 Targets 标签页附加至少一个目标"}
-	}
-
-	err = a.service.EnableInterception(domain.SessionID(sessionID))
+func (a *App) EnableInterception(sessionID string) api.Response[api.EmptyData] {
+	err := a.service.EnableInterception(domain.SessionID(sessionID))
 	if err != nil {
-		a.log.Err(err, "启用拦截失败", "sessionID", sessionID)
-		return OperationResult{Success: false, Error: err.Error()}
+		code, msg := a.TranslateError(err)
+		return api.Fail[api.EmptyData](code, msg)
 	}
 
 	a.log.Info("已启用拦截", "sessionID", sessionID)
-	return OperationResult{Success: true}
+	return api.OK(api.EmptyData{})
 }
 
 // DisableInterception 停用指定会话的网络拦截功能。
-func (a *App) DisableInterception(sessionID string) OperationResult {
+func (a *App) DisableInterception(sessionID string) api.Response[api.EmptyData] {
 	err := a.service.DisableInterception(domain.SessionID(sessionID))
 	if err != nil {
-		a.log.Err(err, "停用拦截失败", "sessionID", sessionID)
-		return OperationResult{Success: false, Error: err.Error()}
+		code, msg := a.TranslateError(err)
+		return api.Fail[api.EmptyData](code, msg)
 	}
 
 	a.log.Info("已停用拦截", "sessionID", sessionID)
-	return OperationResult{Success: true}
+	return api.OK(api.EmptyData{})
 }
 
 // LoadRules 从 JSON 字符串加载规则配置到指定会话。
-func (a *App) LoadRules(sessionID string, rulesJSON string) OperationResult {
+func (a *App) LoadRules(sessionID string, rulesJSON string) api.Response[api.EmptyData] {
 	var cfg rulespec.Config
 	if err := json.Unmarshal([]byte(rulesJSON), &cfg); err != nil {
-		a.log.Err(err, "JSON 解析失败")
-		return OperationResult{Success: false, Error: "JSON 解析失败: " + err.Error()}
+		code, msg := a.TranslateError(err)
+		return api.Fail[api.EmptyData](code, msg)
 	}
 
 	err := a.service.LoadRules(domain.SessionID(sessionID), &cfg)
 	if err != nil {
-		a.log.Err(err, "加载规则失败", "sessionID", sessionID)
-		return OperationResult{Success: false, Error: err.Error()}
+		code, msg := a.TranslateError(err)
+		return api.Fail[api.EmptyData](code, msg)
 	}
 
 	a.log.Info("规则加载成功", "sessionID", sessionID, "ruleCount", len(cfg.Rules))
-	return OperationResult{Success: true}
-}
-
-// StatsResult 表示规则统计结果。
-type StatsResult struct {
-	Stats   domain.EngineStats `json:"stats"`
-	Success bool               `json:"success"`
-	Error   string             `json:"error,omitempty"`
+	return api.OK(api.EmptyData{})
 }
 
 // GetRuleStats 获取指定会话的规则命中统计信息。
-func (a *App) GetRuleStats(sessionID string) StatsResult {
+func (a *App) GetRuleStats(sessionID string) api.Response[StatsData] {
 	stats, err := a.service.GetRuleStats(domain.SessionID(sessionID))
 	if err != nil {
-		a.log.Err(err, "获取规则统计失败", "sessionID", sessionID)
-		return StatsResult{Success: false, Error: err.Error()}
+		code, msg := a.TranslateError(err)
+		return api.Fail[StatsData](code, msg)
 	}
 
-	return StatsResult{Stats: stats, Success: true}
+	return api.OK(StatsData{Stats: stats})
 }
 
 // subscribeEvents 订阅拦截事件并通过 Wails 事件系统推送到前端。
-func (a *App) subscribeEvents(sessionID domain.SessionID) {
+func (a *App) subscribeEvents(ctx context.Context, sessionID domain.SessionID) {
 	ch, err := a.service.SubscribeEvents(sessionID)
 	if err != nil {
 		a.log.Err(err, "订阅事件失败", "sessionID", sessionID)
@@ -353,30 +334,34 @@ func (a *App) subscribeEvents(sessionID domain.SessionID) {
 	}
 
 	a.log.Debug("开始订阅事件", "sessionID", sessionID)
-	for evt := range ch {
-		// 填充 sessionID
-		evt.Session = sessionID
+	for {
+		select {
+		case evt, ok := <-ch:
+			if !ok {
+				a.log.Debug("事件通道已关闭", "sessionID", sessionID)
+				return
+			}
 
-		// 通过 Wails 事件系统推送到前端
-		runtime.EventsEmit(a.ctx, "intercept-event", evt)
+			// 填充 sessionID
+			evt.Session = sessionID
 
-		// 记录到数据库（Repo 内部会过滤只存匹配事件）
-		if a.eventRepo != nil {
-			a.eventRepo.Record(&evt)
+			// 通过 Wails 事件系统推送到前端
+			runtime.EventsEmit(a.ctx, "intercept-event", evt)
+
+			// 记录到数据库
+			if a.eventRepo != nil {
+				a.eventRepo.Record(&evt)
+			}
+
+		case <-ctx.Done():
+			a.log.Debug("事件订阅被取消", "sessionID", sessionID)
+			return
 		}
 	}
-	a.log.Debug("事件订阅已结束", "sessionID", sessionID)
-}
-
-// LaunchBrowserResult 表示启动浏览器的结果。
-type LaunchBrowserResult struct {
-	DevToolsURL string `json:"devToolsUrl"`
-	Success     bool   `json:"success"`
-	Error       string `json:"error,omitempty"`
 }
 
 // LaunchBrowser 启动新的浏览器实例，如果已有浏览器运行则先关闭。
-func (a *App) LaunchBrowser(headless bool) LaunchBrowserResult {
+func (a *App) LaunchBrowser(headless bool) api.Response[BrowserData] {
 	a.log.Info("启动浏览器", "headless", headless)
 
 	if a.browser != nil {
@@ -392,207 +377,173 @@ func (a *App) LaunchBrowser(headless bool) LaunchBrowserResult {
 
 	b, err := browser.Start(opts)
 	if err != nil {
-		a.log.Err(err, "启动浏览器失败")
-		return LaunchBrowserResult{Success: false, Error: err.Error()}
+		code, msg := a.TranslateError(err)
+		return api.Fail[BrowserData](code, msg)
 	}
 
 	a.browser = b
 	a.log.Info("浏览器启动成功", "devToolsURL", b.DevToolsURL)
-	return LaunchBrowserResult{DevToolsURL: b.DevToolsURL, Success: true}
+	return api.OK(BrowserData{DevToolsURL: b.DevToolsURL})
 }
 
 // CloseBrowser 关闭已启动的浏览器实例。
-func (a *App) CloseBrowser() OperationResult {
+func (a *App) CloseBrowser() api.Response[api.EmptyData] {
 	if a.browser == nil {
-		return OperationResult{Success: false, Error: "没有正在运行的浏览器"}
+		code, msg := a.TranslateError(domain.ErrBrowserNotRunning)
+		return api.Fail[api.EmptyData](code, msg)
 	}
 
 	err := a.browser.Stop(2 * time.Second)
 	a.browser = nil
 	if err != nil {
-		a.log.Err(err, "关闭浏览器失败")
-		return OperationResult{Success: false, Error: err.Error()}
+		code, msg := a.TranslateError(err)
+		return api.Fail[api.EmptyData](code, msg)
 	}
 
 	a.log.Info("浏览器已关闭")
-	return OperationResult{Success: true}
+	return api.OK(api.EmptyData{})
 }
 
 // GetBrowserStatus 获取当前浏览器的运行状态。
-func (a *App) GetBrowserStatus() LaunchBrowserResult {
+func (a *App) GetBrowserStatus() api.Response[BrowserData] {
 	if a.browser == nil {
-		return LaunchBrowserResult{Success: false}
+		return api.OK(BrowserData{})
 	}
 
-	return LaunchBrowserResult{DevToolsURL: a.browser.DevToolsURL, Success: true}
-}
-
-// SettingsResult 表示设置操作的结果。
-type SettingsResult struct {
-	Settings map[string]string `json:"settings"`
-	Success  bool              `json:"success"`
-	Error    string            `json:"error,omitempty"`
+	return api.OK(BrowserData{DevToolsURL: a.browser.DevToolsURL})
 }
 
 // GetAllSettings 获取所有应用设置。
-func (a *App) GetAllSettings() SettingsResult {
+func (a *App) GetAllSettings() api.Response[SettingsData] {
 	settings, err := a.settingsRepo.GetAll()
 	if err != nil {
-		a.log.Err(err, "获取所有设置失败")
-		return SettingsResult{Success: false, Error: err.Error()}
+		code, msg := a.TranslateError(err)
+		return api.Fail[SettingsData](code, msg)
 	}
 
-	return SettingsResult{Settings: settings, Success: true}
+	return api.OK(SettingsData{Settings: settings})
 }
 
 // GetSetting 获取单个设置项的值。
-func (a *App) GetSetting(key string) string {
-	return a.settingsRepo.GetWithDefault(key, "")
+func (a *App) GetSetting(key string) api.Response[SettingData] {
+	value := a.settingsRepo.GetWithDefault(key, "")
+	return api.OK(SettingData{Value: value})
 }
 
 // SetSetting 设置单个配置项的值。
-func (a *App) SetSetting(key, value string) OperationResult {
+func (a *App) SetSetting(key, value string) api.Response[api.EmptyData] {
 	if err := a.settingsRepo.Set(key, value); err != nil {
-		a.log.Err(err, "设置配置项失败", "key", key)
-		return OperationResult{Success: false, Error: err.Error()}
+		code, msg := a.TranslateError(err)
+		return api.Fail[api.EmptyData](code, msg)
 	}
 
-	return OperationResult{Success: true}
+	return api.OK(api.EmptyData{})
 }
 
 // SetMultipleSettings 批量设置多个配置项。
-func (a *App) SetMultipleSettings(settingsJSON string) OperationResult {
+func (a *App) SetMultipleSettings(settingsJSON string) api.Response[api.EmptyData] {
 	var settings map[string]string
 	if err := json.Unmarshal([]byte(settingsJSON), &settings); err != nil {
-		a.log.Err(err, "批量设置 JSON 解析失败")
-		return OperationResult{Success: false, Error: "JSON 解析失败: " + err.Error()}
+		code, msg := a.TranslateError(err)
+		return api.Fail[api.EmptyData](code, msg)
 	}
 
 	if err := a.settingsRepo.SetMultiple(settings); err != nil {
-		a.log.Err(err, "批量设置失败")
-		return OperationResult{Success: false, Error: err.Error()}
+		code, msg := a.TranslateError(err)
+		return api.Fail[api.EmptyData](code, msg)
 	}
 
-	return OperationResult{Success: true}
-}
-
-// ConfigListResult 表示配置列表结果。
-type ConfigListResult struct {
-	Configs []model.ConfigRecord `json:"configs"`
-	Success bool                 `json:"success"`
-	Error   string               `json:"error,omitempty"`
-}
-
-// ConfigResult 表示单个配置操作结果。
-type ConfigResult struct {
-	Config  *model.ConfigRecord `json:"config"`
-	Success bool                `json:"success"`
-	Error   string              `json:"error,omitempty"`
+	return api.OK(api.EmptyData{})
 }
 
 // ListConfigs 列出所有已保存的配置。
-func (a *App) ListConfigs() ConfigListResult {
+func (a *App) ListConfigs() api.Response[ConfigListData] {
 	configs, err := a.configRepo.List()
 	if err != nil {
-		a.log.Err(err, "列出配置失败")
-		return ConfigListResult{Success: false, Error: err.Error()}
+		code, msg := a.TranslateError(err)
+		return api.Fail[ConfigListData](code, msg)
 	}
 
-	return ConfigListResult{Configs: configs, Success: true}
+	return api.OK(ConfigListData{Configs: configs})
 }
 
 // GetConfig 根据 ID 获取指定配置。
-func (a *App) GetConfig(id uint) ConfigResult {
+func (a *App) GetConfig(id uint) api.Response[ConfigData] {
 	config, err := a.configRepo.FindOne(context.Background(), id)
 	if err != nil {
-		a.log.Err(err, "获取配置失败", "id", id)
-		return ConfigResult{Success: false, Error: err.Error()}
+		code, msg := a.TranslateError(err)
+		return api.Fail[ConfigData](code, msg)
 	}
 
-	return ConfigResult{Config: config, Success: true}
-}
-
-// NewConfigResult 表示创建新配置的结果（含完整 JSON）。
-type NewConfigResult struct {
-	Config     *model.ConfigRecord `json:"config"`
-	ConfigJSON string              `json:"configJson"` // 完整的 rulespec.Config JSON
-	Success    bool                `json:"success"`
-	Error      string              `json:"error,omitempty"`
+	return api.OK(ConfigData{Config: config})
 }
 
 // CreateNewConfig 创建一个新的空配置并保存到数据库。
-func (a *App) CreateNewConfig(name string) NewConfigResult {
+func (a *App) CreateNewConfig(name string) api.Response[NewConfigData] {
 	cfg := rulespec.NewConfig(name)
 
 	config, err := a.configRepo.Create(cfg)
 	if err != nil {
-		a.log.Err(err, "创建配置失败", "name", name)
-		return NewConfigResult{Success: false, Error: err.Error()}
+		code, msg := a.TranslateError(err)
+		return api.Fail[NewConfigData](code, msg)
 	}
 
 	configJSON, err := json.Marshal(cfg)
 	if err != nil {
-		a.log.Err(err, "序列化配置失败")
-		return NewConfigResult{Success: false, Error: err.Error()}
+		code, msg := a.TranslateError(err)
+		return api.Fail[NewConfigData](code, msg)
 	}
 
 	a.log.Info("新配置已创建", "id", config.ID, "name", name, "configId", cfg.ID)
-	return NewConfigResult{Config: config, ConfigJSON: string(configJSON), Success: true}
-}
-
-// NewRuleResult 表示创建新规则的结果。
-type NewRuleResult struct {
-	RuleJSON string `json:"ruleJson"`
-	Success  bool   `json:"success"`
-	Error    string `json:"error,omitempty"`
+	return api.OK(NewConfigData{Config: config, ConfigJSON: string(configJSON)})
 }
 
 // GenerateNewRule 生成一个新的空规则
-func (a *App) GenerateNewRule(name string, existingCount int) NewRuleResult {
+func (a *App) GenerateNewRule(name string, existingCount int) api.Response[NewRuleData] {
 	rule := rulespec.NewRule(name, existingCount)
 	ruleJSON, err := json.Marshal(rule)
 	if err != nil {
-		a.log.Err(err, "序列化规则失败")
-		return NewRuleResult{Success: false, Error: err.Error()}
+		code, msg := a.TranslateError(err)
+		return api.Fail[NewRuleData](code, msg)
 	}
 
-	return NewRuleResult{RuleJSON: string(ruleJSON), Success: true}
+	return api.OK(NewRuleData{RuleJSON: string(ruleJSON)})
 }
 
 // SaveConfig 保存配置（创建或更新），dbID 为 0 时创建新配置。
-func (a *App) SaveConfig(dbID uint, configJSON string) ConfigResult {
+func (a *App) SaveConfig(dbID uint, configJSON string) api.Response[ConfigData] {
 	var cfg rulespec.Config
 	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
-		a.log.Err(err, "保存配置 JSON 解析失败")
-		return ConfigResult{Success: false, Error: "JSON 解析失败: " + err.Error()}
+		code, msg := a.TranslateError(err)
+		return api.Fail[ConfigData](code, msg)
 	}
 
 	config, err := a.configRepo.Save(dbID, &cfg)
 	if err != nil {
-		a.log.Err(err, "保存配置失败", "dbID", dbID, "configID", cfg.ID)
-		return ConfigResult{Success: false, Error: err.Error()}
+		code, msg := a.TranslateError(err)
+		return api.Fail[ConfigData](code, msg)
 	}
 
 	a.log.Info("配置已保存", "dbID", config.ID, "configID", cfg.ID, "name", cfg.Name)
-	return ConfigResult{Config: config, Success: true}
+	return api.OK(ConfigData{Config: config})
 }
 
 // DeleteConfig 删除指定 ID 的配置。
-func (a *App) DeleteConfig(id uint) OperationResult {
+func (a *App) DeleteConfig(id uint) api.Response[api.EmptyData] {
 	if err := a.configRepo.Delete(context.Background(), id); err != nil {
-		a.log.Err(err, "删除配置失败", "id", id)
-		return OperationResult{Success: false, Error: err.Error()}
+		code, msg := a.TranslateError(err)
+		return api.Fail[api.EmptyData](code, msg)
 	}
 
 	a.log.Info("配置已删除", "id", id)
-	return OperationResult{Success: true}
+	return api.OK(api.EmptyData{})
 }
 
 // SetActiveConfig 设置指定配置为当前激活状态。
-func (a *App) SetActiveConfig(id uint) OperationResult {
+func (a *App) SetActiveConfig(id uint) api.Response[api.EmptyData] {
 	if err := a.configRepo.SetActive(id); err != nil {
-		a.log.Err(err, "设置激活配置失败", "id", id)
-		return OperationResult{Success: false, Error: err.Error()}
+		code, msg := a.TranslateError(err)
+		return api.Fail[api.EmptyData](code, msg)
 	}
 
 	if err := a.settingsRepo.SetLastConfigID(fmt.Sprintf("%d", id)); err != nil {
@@ -600,92 +551,86 @@ func (a *App) SetActiveConfig(id uint) OperationResult {
 	}
 
 	a.log.Debug("已设置激活配置", "id", id)
-	return OperationResult{Success: true}
+	return api.OK(api.EmptyData{})
 }
 
 // GetActiveConfig 获取当前激活的配置。
-func (a *App) GetActiveConfig() ConfigResult {
+func (a *App) GetActiveConfig() api.Response[ConfigData] {
 	config, err := a.configRepo.GetActive()
 	if err != nil {
-		a.log.Err(err, "获取激活配置失败")
-		return ConfigResult{Success: false, Error: err.Error()}
+		code, msg := a.TranslateError(err)
+		return api.Fail[ConfigData](code, msg)
 	}
 
-	return ConfigResult{Config: config, Success: true}
+	return api.OK(ConfigData{Config: config})
 }
 
 // RenameConfig 重命名指定的配置。
-func (a *App) RenameConfig(id uint, newName string) OperationResult {
+func (a *App) RenameConfig(id uint, newName string) api.Response[api.EmptyData] {
 	if err := a.configRepo.Rename(id, newName); err != nil {
-		a.log.Err(err, "重命名配置失败", "id", id, "newName", newName)
-		return OperationResult{Success: false, Error: err.Error()}
+		code, msg := a.TranslateError(err)
+		return api.Fail[api.EmptyData](code, msg)
 	}
 
 	a.log.Debug("配置已重命名", "id", id, "newName", newName)
-	return OperationResult{Success: true}
+	return api.OK(api.EmptyData{})
 }
 
 // ImportConfig 导入配置（根据配置 ID 判断覆盖或新增）。
-func (a *App) ImportConfig(configJSON string) ConfigResult {
+func (a *App) ImportConfig(configJSON string) api.Response[ConfigData] {
 	var cfg rulespec.Config
 	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
-		a.log.Err(err, "导入配置 JSON 解析失败")
-		return ConfigResult{Success: false, Error: "JSON 解析失败: " + err.Error()}
+		code, msg := a.TranslateError(err)
+		return api.Fail[ConfigData](code, msg)
 	}
 
 	config, err := a.configRepo.Upsert(&cfg)
 	if err != nil {
-		a.log.Err(err, "导入配置失败", "configID", cfg.ID)
-		return ConfigResult{Success: false, Error: err.Error()}
+		code, msg := a.TranslateError(err)
+		return api.Fail[ConfigData](code, msg)
 	}
 
 	a.log.Info("配置已导入", "dbID", config.ID, "configID", cfg.ID, "name", cfg.Name)
-	return ConfigResult{Config: config, Success: true}
+	return api.OK(ConfigData{Config: config})
 }
 
 // LoadActiveConfigToSession 加载当前激活的配置到活跃会话。
-func (a *App) LoadActiveConfigToSession() OperationResult {
+func (a *App) LoadActiveConfigToSession() api.Response[api.EmptyData] {
 	if a.currentSession == "" {
-		return OperationResult{Success: false, Error: "没有活跃会话"}
+		code, msg := a.TranslateError(domain.ErrSessionNotFound)
+		return api.Fail[api.EmptyData](code, msg)
 	}
 
 	config, err := a.configRepo.GetActive()
 	if err != nil {
-		a.log.Err(err, "获取激活配置失败")
-		return OperationResult{Success: false, Error: err.Error()}
+		code, msg := a.TranslateError(err)
+		return api.Fail[api.EmptyData](code, msg)
 	}
 	if config == nil {
-		return OperationResult{Success: false, Error: "没有激活的配置"}
+		code, msg := a.TranslateError(domain.ErrConfigNotFound)
+		return api.Fail[api.EmptyData](code, msg)
 	}
 
 	cfg, err := a.configRepo.ToRulespecConfig(config)
 	if err != nil {
-		a.log.Err(err, "转换配置失败", "id", config.ID)
-		return OperationResult{Success: false, Error: err.Error()}
+		code, msg := a.TranslateError(err)
+		return api.Fail[api.EmptyData](code, msg)
 	}
 
 	if err := a.service.LoadRules(a.currentSession, cfg); err != nil {
-		a.log.Err(err, "加载规则到会话失败", "sessionID", a.currentSession)
-		return OperationResult{Success: false, Error: err.Error()}
+		code, msg := a.TranslateError(err)
+		return api.Fail[api.EmptyData](code, msg)
 	}
 
 	a.log.Info("已加载激活配置到会话", "sessionID", a.currentSession, "configID", config.ID)
-	return OperationResult{Success: true}
-}
-
-// MatchedEventHistoryResult 表示匹配事件历史查询结果。
-type MatchedEventHistoryResult struct {
-	Events  []model.NetworkEventRecord `json:"events"`
-	Total   int64                      `json:"total"`
-	Success bool                       `json:"success"`
-	Error   string                     `json:"error,omitempty"`
+	return api.OK(api.EmptyData{})
 }
 
 // QueryMatchedEventHistory 根据条件查询匹配事件历史记录。
-func (a *App) QueryMatchedEventHistory(sessionID, finalResult, url, method string, startTime, endTime int64, offset, limit int) MatchedEventHistoryResult {
+func (a *App) QueryMatchedEventHistory(sessionID, finalResult, url, method string, startTime, endTime int64, offset, limit int) api.Response[EventHistoryData] {
 	if a.eventRepo == nil {
-		a.log.Error("查询事件历史失败: 事件仓库未初始化")
-		return MatchedEventHistoryResult{Success: false, Error: "事件仓库未初始化"}
+		code, msg := a.TranslateError(domain.ErrDatabaseNotInitialized)
+		return api.Fail[EventHistoryData](code, msg)
 	}
 
 	events, total, err := a.eventRepo.Query(repo.QueryOptions{
@@ -699,26 +644,26 @@ func (a *App) QueryMatchedEventHistory(sessionID, finalResult, url, method strin
 		Limit:       limit,
 	})
 	if err != nil {
-		a.log.Err(err, "查询事件历史失败")
-		return MatchedEventHistoryResult{Success: false, Error: err.Error()}
+		code, msg := a.TranslateError(err)
+		return api.Fail[EventHistoryData](code, msg)
 	}
 
-	return MatchedEventHistoryResult{Events: events, Total: total, Success: true}
+	return api.OK(EventHistoryData{Events: events, Total: total})
 }
 
 // CleanupEventHistory 清理指定天数之前的旧事件记录。
-func (a *App) CleanupEventHistory(retentionDays int) OperationResult {
+func (a *App) CleanupEventHistory(retentionDays int) api.Response[api.EmptyData] {
 	if a.eventRepo == nil {
-		a.log.Error("清理事件失败: 事件仓库未初始化")
-		return OperationResult{Success: false, Error: "事件仓库未初始化"}
+		code, msg := a.TranslateError(domain.ErrDatabaseNotInitialized)
+		return api.Fail[api.EmptyData](code, msg)
 	}
 
 	deleted, err := a.eventRepo.CleanupOldEvents(retentionDays)
 	if err != nil {
-		a.log.Err(err, "清理旧事件失败", "retentionDays", retentionDays)
-		return OperationResult{Success: false, Error: err.Error()}
+		code, msg := a.TranslateError(err)
+		return api.Fail[api.EmptyData](code, msg)
 	}
 
 	a.log.Info("已清理旧事件", "retentionDays", retentionDays, "deletedCount", deleted)
-	return OperationResult{Success: true}
+	return api.OK(api.EmptyData{})
 }
