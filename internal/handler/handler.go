@@ -9,7 +9,6 @@ import (
 
 	"cdpnetool/internal/executor"
 	"cdpnetool/internal/logger"
-	"cdpnetool/internal/mutation"
 	"cdpnetool/internal/protocol"
 	"cdpnetool/internal/rules"
 	"cdpnetool/pkg/domain"
@@ -161,7 +160,7 @@ func (h *Handler) executeRequestStageWithTracking(
 		if aggregatedMut == nil {
 			aggregatedMut = mut
 		} else {
-			mutation.MergeRequestMutation(aggregatedMut, mut)
+			mergeRequestMutation(aggregatedMut, mut)
 		}
 	}
 
@@ -170,7 +169,7 @@ func (h *Handler) executeRequestStageWithTracking(
 	var modifiedRequestInfo domain.RequestInfo
 	var modifiedResponseInfo domain.ResponseInfo
 
-	if aggregatedMut != nil && mutation.HasRequestMutation(aggregatedMut) {
+	if aggregatedMut != nil && hasRequestMutation(aggregatedMut) {
 		h.executor.ApplyRequestMutation(ctx, client, ev, aggregatedMut)
 		finalResult = "modified"
 		modifiedRequestInfo = h.captureModifiedRequestData(stageCtx.RequestInfo, aggregatedMut)
@@ -215,7 +214,7 @@ func (h *Handler) executeResponseStageWithTracking(
 		if aggregatedMut == nil {
 			aggregatedMut = mut
 		} else {
-			mutation.MergeResponseMutation(aggregatedMut, mut)
+			mergeResponseMutation(aggregatedMut, mut)
 		}
 
 		// 更新 responseBody 供后续规则使用
@@ -227,7 +226,7 @@ func (h *Handler) executeResponseStageWithTracking(
 	// 应用聚合后的变更
 	var finalResult string
 
-	if aggregatedMut != nil && mutation.HasResponseMutation(aggregatedMut) {
+	if aggregatedMut != nil && hasResponseMutation(aggregatedMut) {
 		// 确保 Body 是最新的
 		if aggregatedMut.Body == nil && responseBody != "" {
 			aggregatedMut.Body = &responseBody
@@ -502,4 +501,68 @@ func buildRuleMatches(matchedRules []*rules.MatchedRule) []domain.RuleMatch {
 		}
 	}
 	return matches
+}
+
+// mergeRequestMutation 合并请求变更
+func mergeRequestMutation(dst, src *executor.RequestMutation) {
+	if src.URL != nil {
+		dst.URL = src.URL
+	}
+	if src.Method != nil {
+		dst.Method = src.Method
+	}
+	for k, v := range src.Headers {
+		if dst.Headers == nil {
+			dst.Headers = make(map[string]string)
+		}
+		dst.Headers[k] = v
+	}
+	for k, v := range src.Query {
+		if dst.Query == nil {
+			dst.Query = make(map[string]string)
+		}
+		dst.Query[k] = v
+	}
+	for k, v := range src.Cookies {
+		if dst.Cookies == nil {
+			dst.Cookies = make(map[string]string)
+		}
+		dst.Cookies[k] = v
+	}
+	dst.RemoveHeaders = append(dst.RemoveHeaders, src.RemoveHeaders...)
+	dst.RemoveQuery = append(dst.RemoveQuery, src.RemoveQuery...)
+	dst.RemoveCookies = append(dst.RemoveCookies, src.RemoveCookies...)
+	if src.Body != nil {
+		dst.Body = src.Body
+	}
+}
+
+// mergeResponseMutation 合并响应变更
+func mergeResponseMutation(dst, src *executor.ResponseMutation) {
+	if src.StatusCode != nil {
+		dst.StatusCode = src.StatusCode
+	}
+	for k, v := range src.Headers {
+		if dst.Headers == nil {
+			dst.Headers = make(map[string]string)
+		}
+		dst.Headers[k] = v
+	}
+	dst.RemoveHeaders = append(dst.RemoveHeaders, src.RemoveHeaders...)
+	if src.Body != nil {
+		dst.Body = src.Body
+	}
+}
+
+// hasRequestMutation 检查请求变更是否有效
+func hasRequestMutation(m *executor.RequestMutation) bool {
+	return m.URL != nil || m.Method != nil ||
+		len(m.Headers) > 0 || len(m.Query) > 0 || len(m.Cookies) > 0 ||
+		len(m.RemoveHeaders) > 0 || len(m.RemoveQuery) > 0 || len(m.RemoveCookies) > 0 ||
+		m.Body != nil
+}
+
+// hasResponseMutation 检查响应变更是否有效
+func hasResponseMutation(m *executor.ResponseMutation) bool {
+	return m.StatusCode != nil || len(m.Headers) > 0 || len(m.RemoveHeaders) > 0 || m.Body != nil
 }
