@@ -85,12 +85,7 @@ func (s *svc) StartSession(cfg domain.SessionConfig) (domain.SessionID, error) {
 	intrHandler := func(client *cdp.Client, ctx context.Context, ev *fetch.RequestPausedReply) {
 		var targetID domain.TargetID
 		if mgr != nil {
-			for id, sess := range mgr.GetAllSessions() {
-				if sess != nil && sess.Client == client {
-					targetID = id
-					break
-				}
-			}
+			targetID = mgr.GetTargetIDByClient(client)
 		}
 		h.Handle(client, ctx, targetID, ev)
 	}
@@ -145,7 +140,7 @@ func (s *svc) StopSession(id domain.SessionID) error {
 	if ses.mgr != nil {
 		// 停用拦截并分离所有目标
 		if ses.intr != nil {
-			sessions := ses.mgr.GetAllSessions()
+			sessions := ses.mgr.GetAttachedTargets()
 			for _, ms := range sessions {
 				_ = ses.intr.DisableTarget(ms.Client, ms.Ctx)
 			}
@@ -235,7 +230,7 @@ func (s *svc) EnableInterception(id domain.SessionID) error {
 
 	ses.intr.SetEnabled(true)
 	// 为当前所有目标启用拦截
-	for _, ms := range ses.mgr.GetAllSessions() {
+	for _, ms := range ses.mgr.GetAttachedTargets() {
 		if err := ses.intr.EnableTarget(ms.Client, ms.Ctx); err != nil {
 			s.log.Err(err, "为目标启用拦截失败", "session", string(id), "target", string(ms.ID))
 		}
@@ -258,7 +253,7 @@ func (s *svc) DisableInterception(id domain.SessionID) error {
 	}
 
 	ses.intr.SetEnabled(false)
-	for _, ms := range ses.mgr.GetAllSessions() {
+	for _, ms := range ses.mgr.GetAttachedTargets() {
 		if err := ses.intr.DisableTarget(ms.Client, ms.Ctx); err != nil {
 			s.log.Err(err, "停用目标拦截失败", "session", string(id), "target", string(ms.ID))
 		}

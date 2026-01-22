@@ -15,10 +15,11 @@ import (
 
 // Manager 负责管理浏览器目标会话
 type Manager struct {
-	devtoolsURL string
-	log         logger.Logger
-	mu          sync.Mutex
-	targets     map[domain.TargetID]*Session
+	devtoolsURL    string
+	log            logger.Logger
+	mu             sync.RWMutex // 读写锁，支持并发读
+	targets        map[domain.TargetID]*Session
+	clientToTarget map[*cdp.Client]domain.TargetID
 }
 
 // Session 表示一个已附加的浏览器目标会话
@@ -36,9 +37,10 @@ func New(devtoolsURL string, log logger.Logger) *Manager {
 		log = logger.NewNop()
 	}
 	return &Manager{
-		devtoolsURL: devtoolsURL,
-		log:         log,
-		targets:     make(map[domain.TargetID]*Session),
+		devtoolsURL:    devtoolsURL,
+		log:            log,
+		targets:        make(map[domain.TargetID]*Session),
+		clientToTarget: make(map[*cdp.Client]domain.TargetID),
 	}
 }
 
@@ -87,6 +89,7 @@ func (m *Manager) AttachTarget(target domain.TargetID) (*Session, error) {
 	}
 
 	m.targets[session.ID] = session
+	m.clientToTarget[client] = session.ID
 	m.log.Info("附加浏览器目标成功", "target", string(session.ID))
 
 	return session, nil
@@ -103,6 +106,7 @@ func (m *Manager) Detach(target domain.TargetID) error {
 	}
 	m.closeSession(session)
 	delete(m.targets, target)
+	delete(m.clientToTarget, session.Client)
 	return nil
 }
 
@@ -114,29 +118,36 @@ func (m *Manager) DetachAll() error {
 	for id, session := range m.targets {
 		m.closeSession(session)
 		delete(m.targets, id)
+		delete(m.clientToTarget, session.Client)
 	}
 	return nil
 }
 
 // GetSession 获取指定目标的会话
 func (m *Manager) GetSession(target domain.TargetID) (*Session, bool) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	session, ok := m.targets[target]
 	return session, ok
 }
 
-// GetAllSessions 获取所有会话
-func (m *Manager) GetAllSessions() map[domain.TargetID]*Session {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+// GetAttachedTargets 获取所有已附加的目标会话（返回副本）
+func (m *Manager) GetAttachedTargets() map[domain.TargetID]*Session {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 
-	// 返回副本，避免外部修改
 	sessions := make(map[domain.TargetID]*Session, len(m.targets))
 	for id, session := range m.targets {
 		sessions[id] = session
 	}
 	return sessions
+}
+
+// GetTargetIDByClient 根据 CDP Client 反查对应的 TargetID（O(1) 查询）
+func (m *Manager) GetTargetIDByClient(client *cdp.Client) domain.TargetID {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.clientToTarget[client]
 }
 
 // ListTargets 列出当前浏览器中的所有 page 目标，并标记哪些已附加
@@ -151,8 +162,8 @@ func (m *Manager) ListTargets(ctx context.Context) ([]domain.TargetInfo, error) 
 		return nil, err
 	}
 
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 
 	out := make([]domain.TargetInfo, 0, len(targets))
 	for i := range targets {
