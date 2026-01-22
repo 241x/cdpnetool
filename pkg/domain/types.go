@@ -34,18 +34,6 @@ type TargetInfo struct {
 	IsCurrent bool     `json:"isCurrent"`
 }
 
-// NetworkEvent 网络请求事件
-type NetworkEvent struct {
-	Session      SessionID    `json:"session"`
-	Target       TargetID     `json:"target"`
-	Timestamp    int64        `json:"timestamp"`
-	IsMatched    bool         `json:"isMatched"`
-	Request      RequestInfo  `json:"request"`
-	Response     ResponseInfo `json:"response,omitempty"`
-	FinalResult  string       `json:"finalResult,omitempty"`
-	MatchedRules []RuleMatch  `json:"matchedRules,omitempty"`
-}
-
 // RequestInfo 请求信息
 type RequestInfo struct {
 	URL          string            `json:"url"`
@@ -76,19 +64,14 @@ type RuleMatch struct {
 	Actions  []string `json:"actions"`
 }
 
-// MatchedEvent 匹配的请求事件
-type MatchedEvent struct {
-	NetworkEvent
-}
-
-// UnmatchedEvent 未匹配的请求事件
-type UnmatchedEvent struct {
-	NetworkEvent
-}
-
-// InterceptEvent 统一事件接口，用于通道传输
-type InterceptEvent struct {
-	IsMatched bool            `json:"isMatched"`
-	Matched   *MatchedEvent   `json:"matched,omitempty"`
-	Unmatched *UnmatchedEvent `json:"unmatched,omitempty"`
+// NetworkEvent 网络请求事件（统一所有拦截事件）
+type NetworkEvent struct {
+	Session      SessionID    `json:"session"`
+	Target       TargetID     `json:"target"`
+	Timestamp    int64        `json:"timestamp"`
+	IsMatched    bool         `json:"isMatched"` // 是否匹配规则
+	Request      RequestInfo  `json:"request"`
+	Response     ResponseInfo `json:"response,omitempty"`
+	FinalResult  string       `json:"finalResult,omitempty"`  // blocked / modified / passed
+	MatchedRules []RuleMatch  `json:"matchedRules,omitempty"` // 匹配的规则列表
 }

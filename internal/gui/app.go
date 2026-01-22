@@ -71,7 +71,7 @@ func (a *App) Startup(ctx context.Context) {
 	err = db.Migrate(gdb,
 		&model.Setting{},
 		&model.ConfigRecord{},
-		&model.MatchedEventRecord{},
+		&model.NetworkEventRecord{},
 	)
 	if err != nil {
 		a.log.Err(err, "数据库迁移失败")
@@ -354,12 +354,15 @@ func (a *App) subscribeEvents(sessionID domain.SessionID) {
 
 	a.log.Debug("开始订阅事件", "sessionID", sessionID)
 	for evt := range ch {
+		// 填充 sessionID
+		evt.Session = sessionID
+
 		// 通过 Wails 事件系统推送到前端
 		runtime.EventsEmit(a.ctx, "intercept-event", evt)
 
-		if evt.IsMatched && evt.Matched != nil && a.eventRepo != nil {
-			evt.Matched.Session = sessionID
-			a.eventRepo.RecordMatched(evt.Matched)
+		// 记录到数据库（Repo 内部会过滤只存匹配事件）
+		if a.eventRepo != nil {
+			a.eventRepo.Record(&evt)
 		}
 	}
 	a.log.Debug("事件订阅已结束", "sessionID", sessionID)
@@ -672,7 +675,7 @@ func (a *App) LoadActiveConfigToSession() OperationResult {
 
 // MatchedEventHistoryResult 表示匹配事件历史查询结果。
 type MatchedEventHistoryResult struct {
-	Events  []model.MatchedEventRecord `json:"events"`
+	Events  []model.NetworkEventRecord `json:"events"`
 	Total   int64                      `json:"total"`
 	Success bool                       `json:"success"`
 	Error   string                     `json:"error,omitempty"`

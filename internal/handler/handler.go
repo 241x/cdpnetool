@@ -22,7 +22,7 @@ import (
 type Handler struct {
 	engine           *rules.Engine
 	executor         *executor.Executor
-	events           chan domain.InterceptEvent
+	events           chan domain.NetworkEvent
 	processTimeoutMS int
 	log              logger.Logger
 }
@@ -31,7 +31,7 @@ type Handler struct {
 type Config struct {
 	Engine           *rules.Engine
 	Executor         *executor.Executor
-	Events           chan domain.InterceptEvent
+	Events           chan domain.NetworkEvent
 	ProcessTimeoutMS int
 	Logger           logger.Logger
 }
@@ -316,20 +316,15 @@ func (h *Handler) sendMatchedEvent(
 	if h.events == nil {
 		return
 	}
-	evt := domain.InterceptEvent{
-		IsMatched: true,
-		Matched: &domain.MatchedEvent{
-			NetworkEvent: domain.NetworkEvent{
-				Session:      "", // 会在上层填充
-				Target:       targetID,
-				Timestamp:    time.Now().UnixMilli(),
-				IsMatched:    true,
-				Request:      requestInfo,
-				Response:     responseInfo,
-				FinalResult:  finalResult,
-				MatchedRules: matchedRules,
-			},
-		},
+	evt := domain.NetworkEvent{
+		Session:      "", // 会在上层填充
+		Target:       targetID,
+		Timestamp:    time.Now().UnixMilli(),
+		IsMatched:    true,
+		Request:      requestInfo,
+		Response:     responseInfo,
+		FinalResult:  finalResult,
+		MatchedRules: matchedRules,
 	}
 
 	select {
@@ -372,18 +367,13 @@ func (h *Handler) sendUnmatchedEvent(
 		responseInfo.Body = ""
 	}
 
-	evt := domain.InterceptEvent{
+	evt := domain.NetworkEvent{
+		Session:   "", // 会在上层填充
+		Target:    targetID,
+		Timestamp: time.Now().UnixMilli(),
 		IsMatched: false,
-		Unmatched: &domain.UnmatchedEvent{
-			NetworkEvent: domain.NetworkEvent{
-				Session:   "", // 会在上层填充
-				Target:    targetID,
-				Timestamp: time.Now().UnixMilli(),
-				IsMatched: false,
-				Request:   requestInfo,
-				Response:  responseInfo,
-			},
-		},
+		Request:   requestInfo,
+		Response:  responseInfo,
 	}
 
 	select {

@@ -31,8 +31,8 @@ type ConfigRecord struct {
 	UpdatedAt  time.Time `json:"updatedAt"`                            // 更新时间
 }
 
-// MatchedEventRecord 匹配事件记录表（只存储匹配的请求）
-type MatchedEventRecord struct {
+// NetworkEventRecord 网络事件记录表（存储匹配的请求）
+type NetworkEventRecord struct {
 	ID               uint      `gorm:"primaryKey" json:"id"`
 	SessionID        string    `gorm:"index" json:"sessionId"`
 	TargetID         string    `json:"targetId"`
@@ -45,4 +45,9 @@ type MatchedEventRecord struct {
 	ResponseJSON     string    `gorm:"type:text" json:"responseJson"`     // 响应信息 JSON
 	Timestamp        int64     `gorm:"index" json:"timestamp"`
 	CreatedAt        time.Time `json:"createdAt"`
+}
+
+// TableName 指定表名（保持与旧表名一致，避免迁移）
+func (NetworkEventRecord) TableName() string {
+	return "matched_event_records"
 }

@@ -32,7 +32,7 @@ type session struct {
 	id     domain.SessionID
 	cfg    domain.SessionConfig
 	config *rulespec.Config
-	events chan domain.InterceptEvent
+	events chan domain.NetworkEvent
 
 	mgr      *manager.Manager
 	intr     *interceptor.Interceptor
@@ -68,7 +68,7 @@ func (s *svc) StartSession(cfg domain.SessionConfig) (domain.SessionID, error) {
 	}
 
 	id := domain.SessionID(uuid.New().String())
-	events := make(chan domain.InterceptEvent, cfg.PendingCapacity)
+	events := make(chan domain.NetworkEvent, cfg.PendingCapacity)
 
 	// 会话内组件
 	mgr := manager.New(cfg.DevToolsURL, s.log)
@@ -319,7 +319,7 @@ func (s *svc) GetRuleStats(id domain.SessionID) (domain.EngineStats, error) {
 }
 
 // SubscribeEvents 订阅会话事件流
-func (s *svc) SubscribeEvents(id domain.SessionID) (<-chan domain.InterceptEvent, error) {
+func (s *svc) SubscribeEvents(id domain.SessionID) (<-chan domain.NetworkEvent, error) {
 	s.mu.Lock()
 	ses, ok := s.sessions[id]
 	s.mu.Unlock()

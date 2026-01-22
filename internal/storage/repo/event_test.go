@@ -21,7 +21,7 @@ func setupEventTestDB(t *testing.T) *repo.EventRepo {
 		t.Fatalf("创建内存数据库失败: %v", err)
 	}
 
-	err = db.Migrate(gdb, &model.MatchedEventRecord{})
+	err = db.Migrate(gdb, &model.NetworkEventRecord{})
 	if err != nil {
 		t.Fatalf("迁移数据库失败: %v", err)
 	}
@@ -43,22 +43,21 @@ func TestEventRepo_AsyncWrite(t *testing.T) {
 
 	// 创建多个测试事件
 	for i := 0; i < 10; i++ {
-		evt := &domain.MatchedEvent{
-			NetworkEvent: domain.NetworkEvent{
-				Session: "test-session",
-				Target:  "test-target",
-				Request: domain.RequestInfo{
-					URL:    "http://example.com",
-					Method: "GET",
-				},
-				Response: domain.ResponseInfo{
-					StatusCode: 200,
-				},
-				FinalResult: "passed",
-				Timestamp:   time.Now().UnixMilli(),
+		evt := &domain.NetworkEvent{
+			Session:   "test-session",
+			Target:    "test-target",
+			IsMatched: true,
+			Request: domain.RequestInfo{
+				URL:    "http://example.com",
+				Method: "GET",
 			},
+			Response: domain.ResponseInfo{
+				StatusCode: 200,
+			},
+			FinalResult: "passed",
+			Timestamp:   time.Now().UnixMilli(),
 		}
-		r.RecordMatched(evt)
+		r.Record(evt)
 	}
 
 	// 等待异步写入完成
@@ -88,38 +87,35 @@ func TestEventRepo_QueryWithFilters(t *testing.T) {
 	defer r.Stop()
 
 	// 插入不同类型的事件
-	events := []*domain.MatchedEvent{
+	events := []*domain.NetworkEvent{
 		{
-			NetworkEvent: domain.NetworkEvent{
-				Session:     "s1",
-				Request:     domain.RequestInfo{URL: "http://a.com", Method: "GET"},
-				Response:    domain.ResponseInfo{StatusCode: 200},
-				FinalResult: "passed",
-				Timestamp:   1000,
-			},
+			Session:     "s1",
+			IsMatched:   true,
+			Request:     domain.RequestInfo{URL: "http://a.com", Method: "GET"},
+			Response:    domain.ResponseInfo{StatusCode: 200},
+			FinalResult: "passed",
+			Timestamp:   1000,
 		},
 		{
-			NetworkEvent: domain.NetworkEvent{
-				Session:     "s1",
-				Request:     domain.RequestInfo{URL: "http://b.com", Method: "POST"},
-				Response:    domain.ResponseInfo{StatusCode: 403},
-				FinalResult: "blocked",
-				Timestamp:   2000,
-			},
+			Session:     "s1",
+			IsMatched:   true,
+			Request:     domain.RequestInfo{URL: "http://b.com", Method: "POST"},
+			Response:    domain.ResponseInfo{StatusCode: 403},
+			FinalResult: "blocked",
+			Timestamp:   2000,
 		},
 		{
-			NetworkEvent: domain.NetworkEvent{
-				Session:     "s2",
-				Request:     domain.RequestInfo{URL: "http://c.com", Method: "GET"},
-				Response:    domain.ResponseInfo{StatusCode: 200},
-				FinalResult: "modified",
-				Timestamp:   3000,
-			},
+			Session:     "s2",
+			IsMatched:   true,
+			Request:     domain.RequestInfo{URL: "http://c.com", Method: "GET"},
+			Response:    domain.ResponseInfo{StatusCode: 200},
+			FinalResult: "modified",
+			Timestamp:   3000,
 		},
 	}
 
 	for _, evt := range events {
-		r.RecordMatched(evt)
+		r.Record(evt)
 	}
 
 	time.Sleep(200 * time.Millisecond)

@@ -37,7 +37,7 @@ type Service interface {
 	GetRuleStats(id domain.SessionID) (domain.EngineStats, error)
 
 	// SubscribeEvents 订阅事件
-	SubscribeEvents(id domain.SessionID) (<-chan domain.InterceptEvent, error)
+	SubscribeEvents(id domain.SessionID) (<-chan domain.NetworkEvent, error)
 }
 
 // NewService 创建并返回服务接口实现
