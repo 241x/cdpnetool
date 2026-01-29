@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"cdpnetool/internal/executor"
+	"cdpnetool/internal/logger"
 	"cdpnetool/pkg/rulespec"
 
 	"github.com/mafredri/cdp/protocol/fetch"
@@ -333,7 +334,7 @@ func TestExecutor_ExecuteRequestActions(t *testing.T) {
 		},
 	}
 
-	exec := executor.New()
+	exec := executor.New(logger.NewNop())
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mut := exec.ExecuteRequestActions(tt.actions, tt.ev)
@@ -564,7 +565,7 @@ func TestExecutor_ExecuteResponseActions(t *testing.T) {
 		},
 	}
 
-	exec := executor.New()
+	exec := executor.New(logger.NewNop())
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mut := exec.ExecuteResponseActions(tt.actions, tt.ev, tt.responseBody)

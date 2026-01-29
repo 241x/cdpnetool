@@ -118,7 +118,7 @@ func (h *Handler) HandleRequest(
 		if h.collectUnmatched {
 			h.saveToPool(ev, nil, nil, false, traceID, nil, false)
 		}
-		h.executor.ContinueRequest(ctx, client, ev)
+		_ = h.executor.ContinueRequest(ctx, client, ev)
 		return
 	}
 
@@ -134,7 +134,7 @@ func (h *Handler) HandleRequest(
 		if h.collectUnmatched {
 			h.saveToPool(ev, nil, nil, false, traceID, nil, false)
 		}
-		h.executor.ContinueRequest(ctx, client, ev)
+		_ = h.executor.ContinueRequest(ctx, client, ev)
 		return
 	}
 
@@ -151,16 +151,16 @@ func (h *Handler) HandleRequest(
 	isReqModified := mutation != nil && hasRequestMutation(mutation)
 
 	if blockRule != nil {
-		h.executor.ApplyRequestMutation(ctx, client, ev, mutation)
+		_ = h.executor.ApplyRequestMutation(ctx, client, ev, mutation)
 		originalInfo := h.captureRequestData(ev)
 		h.emitRequestEvent(targetID, "blocked", ruleMatches, originalInfo, mutation, start, l)
 		return
 	}
 
 	if isReqModified {
-		h.executor.ApplyRequestMutation(ctx, client, ev, mutation)
+		_ = h.executor.ApplyRequestMutation(ctx, client, ev, mutation)
 	} else {
-		h.executor.ContinueRequest(ctx, client, ev)
+		_ = h.executor.ContinueRequest(ctx, client, ev)
 	}
 
 	// 3. 长连接预判
@@ -218,7 +218,7 @@ func (h *Handler) HandleResponse(
 	// 1. 从池中检索关联的请求信息
 	val, ok := h.pendingPool.Load(ev.RequestID)
 	if !ok {
-		h.executor.ContinueResponse(ctx, client, ev)
+		_ = h.executor.ContinueResponse(ctx, client, ev)
 		return
 	}
 	pending := val.(*PendingRequest)
@@ -267,10 +267,10 @@ func (h *Handler) HandleResponse(
 			if resMutation.Body == nil && finalBody != "" && !isUnsafe && finalBody != originalResInfo.Body {
 				resMutation.Body = &finalBody
 			}
-			h.executor.ApplyResponseMutation(ctx, client, ev, resMutation)
+			_ = h.executor.ApplyResponseMutation(ctx, client, ev, resMutation)
 			finalResult = "modified"
 		} else {
-			h.executor.ContinueResponse(ctx, client, ev)
+			_ = h.executor.ContinueResponse(ctx, client, ev)
 			// 如果响应没改，但请求阶段改了，结果仍标记为 modified
 			if pending.RequestModified {
 				finalResult = "modified"
@@ -280,7 +280,7 @@ func (h *Handler) HandleResponse(
 		}
 	} else {
 		// 未匹配规则，纯采集路径
-		h.executor.ContinueResponse(ctx, client, ev)
+		_ = h.executor.ContinueResponse(ctx, client, ev)
 		finalResult = "passed"
 		finalBody = originalResInfo.Body
 	}

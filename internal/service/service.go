@@ -77,7 +77,7 @@ func (s *svc) StartSession(ctx context.Context, cfg domain.SessionConfig) (domai
 
 	// 会话内组件
 	mgr := manager.New(cfg.DevToolsURL, s.log)
-	exec := executor.New()
+	exec := executor.New(s.log)
 	h := handler.New(handler.Config{
 		Engine:           nil,
 		Executor:         exec,

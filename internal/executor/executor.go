@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"strings"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/mafredri/cdp/protocol/fetch"
 	"github.com/tidwall/sjson"
 
+	"cdpnetool/internal/logger"
 	"cdpnetool/internal/protocol"
 	"cdpnetool/pkg/rulespec"
 )
@@ -46,11 +48,13 @@ type ResponseMutation struct {
 }
 
 // Executor 行为执行器
-type Executor struct{}
+type Executor struct {
+	log logger.Logger
+}
 
 // New 创建行为执行器
-func New() *Executor {
-	return &Executor{}
+func New(log logger.Logger) *Executor {
+	return &Executor{log: log}
 }
 
 // ExecuteRequestActions 执行请求阶段的行为，返回修改结果
@@ -136,19 +140,20 @@ func (e *Executor) ExecuteRequestActions(actions []rulespec.Action, ev *fetch.Re
 			mut.Body = &currentBody
 
 		case rulespec.ActionPatchBodyJson:
-			if newBody, ok := applyJSONPatches(currentBody, action.Patches); ok {
+			newBody, err := e.applyJSONPatches(currentBody, action.Patches, ev.RequestID)
+			if err == nil {
 				currentBody = newBody
 				mut.Body = &currentBody
 			}
 
 		case rulespec.ActionSetFormField:
 			if v, ok := action.Value.(string); ok {
-				currentBody = setFormField(currentBody, action.Name, v, ev)
+				currentBody = e.setFormField(currentBody, action.Name, v, ev)
 				mut.Body = &currentBody
 			}
 
 		case rulespec.ActionRemoveFormField:
-			currentBody = removeFormField(currentBody, action.Name, ev)
+			currentBody = e.removeFormField(currentBody, action.Name, ev)
 			mut.Body = &currentBody
 
 		case rulespec.ActionBlock:
@@ -236,7 +241,8 @@ func (e *Executor) ExecuteResponseActions(actions []rulespec.Action, ev *fetch.R
 			mut.Body = &currentBody
 
 		case rulespec.ActionPatchBodyJson:
-			if newBody, ok := applyJSONPatches(currentBody, action.Patches); ok {
+			newBody, err := e.applyJSONPatches(currentBody, action.Patches, ev.RequestID)
+			if err == nil {
 				currentBody = newBody
 				mut.Body = &currentBody
 			}
@@ -247,9 +253,9 @@ func (e *Executor) ExecuteResponseActions(actions []rulespec.Action, ev *fetch.R
 }
 
 // ApplyRequestMutation 应用请求修改到 CDP
-func (e *Executor) ApplyRequestMutation(ctx context.Context, client *cdp.Client, ev *fetch.RequestPausedReply, mut *RequestMutation) {
+func (e *Executor) ApplyRequestMutation(ctx context.Context, client *cdp.Client, ev *fetch.RequestPausedReply, mut *RequestMutation) error {
 	if client == nil {
-		return
+		return fmt.Errorf("client is nil")
 	}
 
 	// 处理终结性行为 block
@@ -264,8 +270,11 @@ func (e *Executor) ApplyRequestMutation(ctx context.Context, client *cdp.Client,
 		if len(mut.Block.Body) > 0 {
 			args.Body = mut.Block.Body
 		}
-		_ = client.Fetch.FulfillRequest(ctx, args)
-		return
+		err := client.Fetch.FulfillRequest(ctx, args)
+		if err != nil {
+			e.log.Err(err, "执行 FulfillRequest (Block) 失败", "requestID", ev.RequestID)
+		}
+		return err
 	}
 
 	// 构建 ContinueRequest 参数
@@ -293,13 +302,17 @@ func (e *Executor) ApplyRequestMutation(ctx context.Context, client *cdp.Client,
 		args.PostData = []byte(*mut.Body)
 	}
 
-	_ = client.Fetch.ContinueRequest(ctx, args)
+	err := client.Fetch.ContinueRequest(ctx, args)
+	if err != nil {
+		e.log.Err(err, "执行 ContinueRequest 失败", "requestID", ev.RequestID)
+	}
+	return err
 }
 
 // ApplyResponseMutation 应用响应修改到 CDP
-func (e *Executor) ApplyResponseMutation(ctx context.Context, client *cdp.Client, ev *fetch.RequestPausedReply, mut *ResponseMutation) {
+func (e *Executor) ApplyResponseMutation(ctx context.Context, client *cdp.Client, ev *fetch.RequestPausedReply, mut *ResponseMutation) error {
 	if client == nil {
-		return
+		return fmt.Errorf("client is nil")
 	}
 
 	// 如果需要修改 Body，必须使用 FulfillRequest
@@ -321,39 +334,62 @@ func (e *Executor) ApplyResponseMutation(ctx context.Context, client *cdp.Client
 			Body:            []byte(*mut.Body),
 		}
 		if err := client.Fetch.FulfillRequest(ctx, args); err != nil {
+			e.log.Err(err, "执行 FulfillRequest 失败", "requestID", ev.RequestID)
 			// 兜底：如果 FulfillRequest 失败，执行 ContinueResponse 以避免请求挂起
 			_ = client.Fetch.ContinueResponse(ctx, &fetch.ContinueResponseArgs{RequestID: ev.RequestID})
+			return err
 		}
-		return
+		return nil
 	}
 
 	// 只修改状态码和头部，使用 ContinueResponse
 	args := &fetch.ContinueResponseArgs{RequestID: ev.RequestID}
-	if mut.StatusCode != nil {
-		args.ResponseCode = mut.StatusCode
+
+	// CDP 要求：如果要覆盖响应状态码或响应头，则两者必须同时提供
+	hasMutation := mut.StatusCode != nil || len(mut.Headers) > 0 || len(mut.RemoveHeaders) > 0
+
+	if hasMutation {
+		code := 200
+		if ev.ResponseStatusCode != nil {
+			code = *ev.ResponseStatusCode
+		}
+		if mut.StatusCode != nil {
+			code = *mut.StatusCode
+		}
+		args.ResponseCode = &code
+		args.ResponseHeaders = e.buildFinalResponseHeaders(ev, mut)
 	}
 
-	headers := e.buildFinalResponseHeaders(ev, mut)
-	if len(headers) > 0 {
-		args.ResponseHeaders = headers
+	e.log.Debug("执行 ContinueResponse", "requestID", ev.RequestID, "args", args)
+	err := client.Fetch.ContinueResponse(ctx, args)
+	if err != nil {
+		e.log.Err(err, "执行 ContinueResponse 失败", "requestID", ev.RequestID)
 	}
-	_ = client.Fetch.ContinueResponse(ctx, args)
+	return err
 }
 
 // ContinueRequest 继续原请求
-func (e *Executor) ContinueRequest(ctx context.Context, client *cdp.Client, ev *fetch.RequestPausedReply) {
+func (e *Executor) ContinueRequest(ctx context.Context, client *cdp.Client, ev *fetch.RequestPausedReply) error {
 	if client == nil {
-		return
+		return fmt.Errorf("client is nil")
 	}
-	_ = client.Fetch.ContinueRequest(ctx, &fetch.ContinueRequestArgs{RequestID: ev.RequestID})
+	err := client.Fetch.ContinueRequest(ctx, &fetch.ContinueRequestArgs{RequestID: ev.RequestID})
+	if err != nil {
+		e.log.Err(err, "执行 ContinueRequest 失败", "requestID", ev.RequestID)
+	}
+	return err
 }
 
 // ContinueResponse 继续原响应
-func (e *Executor) ContinueResponse(ctx context.Context, client *cdp.Client, ev *fetch.RequestPausedReply) {
+func (e *Executor) ContinueResponse(ctx context.Context, client *cdp.Client, ev *fetch.RequestPausedReply) error {
 	if client == nil {
-		return
+		return fmt.Errorf("client is nil")
 	}
-	_ = client.Fetch.ContinueResponse(ctx, &fetch.ContinueResponseArgs{RequestID: ev.RequestID})
+	err := client.Fetch.ContinueResponse(ctx, &fetch.ContinueResponseArgs{RequestID: ev.RequestID})
+	if err != nil {
+		e.log.Err(err, "执行 ContinueResponse 失败", "requestID", ev.RequestID)
+	}
+	return err
 }
 
 // FetchResponseBody 获取响应体
@@ -364,13 +400,18 @@ func (e *Executor) FetchResponseBody(ctx context.Context, client *cdp.Client, re
 	ctx2, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 	defer cancel()
 	rb, err := client.Fetch.GetResponseBody(ctx2, &fetch.GetResponseBodyArgs{RequestID: requestID})
-	if err != nil || rb == nil {
+	if err != nil {
+		e.log.Err(err, "获取响应体失败", "requestID", requestID)
+		return "", false
+	}
+	if rb == nil {
 		return "", false
 	}
 	if rb.Base64Encoded {
 		if b, err := base64.StdEncoding.DecodeString(rb.Body); err == nil {
 			return string(b), true
 		}
+		e.log.Err(fmt.Errorf("base64 decode failed"), "解码响应体失败", "requestID", requestID)
 		return "", false
 	}
 	return rb.Body, true
@@ -417,7 +458,10 @@ func (e *Executor) buildFinalURL(originalURL string, mut *RequestMutation) *stri
 func (e *Executor) buildFinalHeaders(ev *fetch.RequestPausedReply, mut *RequestMutation) []fetch.HeaderEntry {
 	// 解析原始头部
 	originalHeaders := make(map[string]string)
-	_ = json.Unmarshal(ev.Request.Headers, &originalHeaders)
+	if err := json.Unmarshal(ev.Request.Headers, &originalHeaders); err != nil {
+		e.log.Err(err, "解析原始请求头失败", "requestID", ev.RequestID)
+		// 如果解析失败，仍然应用修改后的头部，但会丢失原始头部
+	}
 
 	// 应用修改
 	// 1. 移除头部
@@ -521,13 +565,12 @@ func toHeaderEntries(h map[string]string) []fetch.HeaderEntry {
 }
 
 // applyJSONPatches 应用 JSON Patch 操作，使用 sjson 实现高性能修改
-func applyJSONPatches(body string, patches []rulespec.JSONPatchOp) (string, bool) {
+func (e *Executor) applyJSONPatches(body string, patches []rulespec.JSONPatchOp, requestID fetch.RequestID) (string, error) {
 	if body == "" || len(patches) == 0 {
-		return body, false
+		return body, nil
 	}
 
 	currentBody := body
-	modified := false
 
 	for _, patch := range patches {
 		if patch.Path == "" {
@@ -543,23 +586,25 @@ func applyJSONPatches(body string, patches []rulespec.JSONPatchOp) (string, bool
 		switch patch.Op {
 		case "add", "replace":
 			currentBody, err = sjson.Set(currentBody, path, patch.Value)
-			if err == nil {
-				modified = true
+			if err != nil {
+				e.log.Err(err, "sjson set error", "requestID", requestID, "path", path, "op", patch.Op)
+				return body, err
 			}
 		case "remove":
 			currentBody, err = sjson.Delete(currentBody, path)
-			if err == nil {
-				modified = true
+			if err != nil {
+				e.log.Err(err, "sjson delete error", "requestID", requestID, "path", path)
+				return body, err
 			}
 		}
 	}
 
-	return currentBody, modified
+	return currentBody, nil
 }
 
 // setFormField 设置表单字段
-func setFormField(body, name, value string, ev *fetch.RequestPausedReply) string {
-	contentType := getContentType(ev)
+func (e *Executor) setFormField(body, name, value string, ev *fetch.RequestPausedReply) string {
+	contentType := getContentType(ev, e.log)
 
 	if strings.Contains(contentType, "application/x-www-form-urlencoded") {
 		return setURLEncodedField(body, name, value)
@@ -574,8 +619,8 @@ func setFormField(body, name, value string, ev *fetch.RequestPausedReply) string
 }
 
 // removeFormField 移除表单字段
-func removeFormField(body, name string, ev *fetch.RequestPausedReply) string {
-	contentType := getContentType(ev)
+func (e *Executor) removeFormField(body, name string, ev *fetch.RequestPausedReply) string {
+	contentType := getContentType(ev, e.log)
 
 	if strings.Contains(contentType, "application/x-www-form-urlencoded") {
 		return removeURLEncodedField(body, name)
@@ -591,22 +636,33 @@ func removeFormField(body, name string, ev *fetch.RequestPausedReply) string {
 
 // setURLEncodedField 设置 URL 编码表单字段
 func setURLEncodedField(body, name, value string) string {
-	values, _ := url.ParseQuery(body)
+	values, err := url.ParseQuery(body)
+	if err != nil {
+		return body
+	}
 	values.Set(name, value)
 	return values.Encode()
 }
 
 // removeURLEncodedField 移除 URL 编码表单字段
 func removeURLEncodedField(body, name string) string {
-	values, _ := url.ParseQuery(body)
+	values, err := url.ParseQuery(body)
+	if err != nil {
+		return body
+	}
 	values.Del(name)
 	return values.Encode()
 }
 
 // getContentType 获取 Content-Type
-func getContentType(ev *fetch.RequestPausedReply) string {
+func getContentType(ev *fetch.RequestPausedReply, log logger.Logger) string {
 	var headers map[string]string
-	_ = json.Unmarshal(ev.Request.Headers, &headers)
+	if err := json.Unmarshal(ev.Request.Headers, &headers); err != nil {
+		if log != nil {
+			log.Err(err, "解析请求头获取 Content-Type 失败", "requestID", ev.RequestID)
+		}
+		return ""
+	}
 
 	for k, v := range headers {
 		if strings.EqualFold(k, "content-type") {
