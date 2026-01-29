@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"cdpnetool/internal/executor"
 	"cdpnetool/internal/handler"
 	"cdpnetool/internal/interceptor"
 	"cdpnetool/internal/logger"
@@ -60,13 +59,13 @@ func (s *svc) StartSession(ctx context.Context, cfg domain.SessionConfig) (domai
 		cfg.Concurrency = 32
 	}
 	if cfg.BodySizeThreshold <= 0 {
-		cfg.BodySizeThreshold = 2 << 20 // 2MB
+		cfg.BodySizeThreshold = 8 << 20
 	}
 	if cfg.ProcessTimeoutMS <= 0 {
 		cfg.ProcessTimeoutMS = 5000
 	}
 	if cfg.PendingCapacity <= 0 {
-		cfg.PendingCapacity = 256
+		cfg.PendingCapacity = 1024
 	}
 
 	id := domain.SessionID(uuid.New().String())
@@ -77,14 +76,13 @@ func (s *svc) StartSession(ctx context.Context, cfg domain.SessionConfig) (domai
 
 	// 会话内组件
 	mgr := manager.New(cfg.DevToolsURL, s.log)
-	exec := executor.New(s.log)
 	h := handler.New(handler.Config{
-		Engine:           nil,
-		Executor:         exec,
-		Events:           events,
-		ProcessTimeoutMS: cfg.ProcessTimeoutMS,
-		Logger:           s.log,
-		CollectUnmatched: true, // 默认开启收集未匹配请求
+		Engine:            nil,
+		Events:            events,
+		ProcessTimeoutMS:  cfg.ProcessTimeoutMS,
+		BodySizeThreshold: cfg.BodySizeThreshold,
+		Logger:            s.log,
+		CollectUnmatched:  true, // 默认开启收集未匹配请求
 	})
 
 	// 拦截器回调

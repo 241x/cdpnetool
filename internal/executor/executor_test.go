@@ -19,7 +19,7 @@ func TestExecutor_ExecuteRequestActions(t *testing.T) {
 		name     string
 		actions  []rulespec.Action
 		ev       *fetch.RequestPausedReply
-		validate func(*testing.T, *executor.RequestMutation)
+		validate func(*testing.T, *executor.Executor, *executor.RequestMutation)
 	}{
 		{
 			name: "设置 URL",
@@ -27,7 +27,7 @@ func TestExecutor_ExecuteRequestActions(t *testing.T) {
 				{Type: rulespec.ActionSetUrl, Value: "https://new-url.com"},
 			},
 			ev: &fetch.RequestPausedReply{},
-			validate: func(t *testing.T, mut *executor.RequestMutation) {
+			validate: func(t *testing.T, exec *executor.Executor, mut *executor.RequestMutation) {
 				if mut.URL == nil {
 					t.Fatal("expected URL to be set")
 				}
@@ -42,7 +42,7 @@ func TestExecutor_ExecuteRequestActions(t *testing.T) {
 				{Type: rulespec.ActionSetMethod, Value: "POST"},
 			},
 			ev: &fetch.RequestPausedReply{},
-			validate: func(t *testing.T, mut *executor.RequestMutation) {
+			validate: func(t *testing.T, exec *executor.Executor, mut *executor.RequestMutation) {
 				if mut.Method == nil {
 					t.Fatal("expected Method to be set")
 				}
@@ -59,7 +59,7 @@ func TestExecutor_ExecuteRequestActions(t *testing.T) {
 				{Type: rulespec.ActionSetHeader, Name: "Authorization", Value: "Bearer token"},
 			},
 			ev: &fetch.RequestPausedReply{},
-			validate: func(t *testing.T, mut *executor.RequestMutation) {
+			validate: func(t *testing.T, exec *executor.Executor, mut *executor.RequestMutation) {
 				if len(mut.Headers) != 3 {
 					t.Errorf("expected 3 headers, got %d", len(mut.Headers))
 				}
@@ -78,7 +78,7 @@ func TestExecutor_ExecuteRequestActions(t *testing.T) {
 				{Type: rulespec.ActionRemoveHeader, Name: "Cookie"},
 			},
 			ev: &fetch.RequestPausedReply{},
-			validate: func(t *testing.T, mut *executor.RequestMutation) {
+			validate: func(t *testing.T, exec *executor.Executor, mut *executor.RequestMutation) {
 				if len(mut.RemoveHeaders) != 2 {
 					t.Errorf("expected 2 remove headers, got %d", len(mut.RemoveHeaders))
 				}
@@ -94,7 +94,7 @@ func TestExecutor_ExecuteRequestActions(t *testing.T) {
 				{Type: rulespec.ActionSetQueryParam, Name: "limit", Value: "50"},
 			},
 			ev: &fetch.RequestPausedReply{},
-			validate: func(t *testing.T, mut *executor.RequestMutation) {
+			validate: func(t *testing.T, exec *executor.Executor, mut *executor.RequestMutation) {
 				if len(mut.Query) != 2 {
 					t.Errorf("expected 2 query params, got %d", len(mut.Query))
 				}
@@ -113,7 +113,7 @@ func TestExecutor_ExecuteRequestActions(t *testing.T) {
 				{Type: rulespec.ActionRemoveQueryParam, Name: "utm_medium"},
 			},
 			ev: &fetch.RequestPausedReply{},
-			validate: func(t *testing.T, mut *executor.RequestMutation) {
+			validate: func(t *testing.T, exec *executor.Executor, mut *executor.RequestMutation) {
 				if len(mut.RemoveQuery) != 2 {
 					t.Errorf("expected 2 remove query params, got %d", len(mut.RemoveQuery))
 				}
@@ -126,7 +126,7 @@ func TestExecutor_ExecuteRequestActions(t *testing.T) {
 				{Type: rulespec.ActionSetCookie, Name: "user_id", Value: "999"},
 			},
 			ev: &fetch.RequestPausedReply{},
-			validate: func(t *testing.T, mut *executor.RequestMutation) {
+			validate: func(t *testing.T, exec *executor.Executor, mut *executor.RequestMutation) {
 				if len(mut.Cookies) != 2 {
 					t.Errorf("expected 2 cookies, got %d", len(mut.Cookies))
 				}
@@ -141,7 +141,7 @@ func TestExecutor_ExecuteRequestActions(t *testing.T) {
 				{Type: rulespec.ActionRemoveCookie, Name: "tracking_id"},
 			},
 			ev: &fetch.RequestPausedReply{},
-			validate: func(t *testing.T, mut *executor.RequestMutation) {
+			validate: func(t *testing.T, exec *executor.Executor, mut *executor.RequestMutation) {
 				if len(mut.RemoveCookies) != 1 {
 					t.Errorf("expected 1 remove cookie, got %d", len(mut.RemoveCookies))
 				}
@@ -156,7 +156,7 @@ func TestExecutor_ExecuteRequestActions(t *testing.T) {
 				{Type: rulespec.ActionSetBody, Value: "new body content"},
 			},
 			ev: &fetch.RequestPausedReply{},
-			validate: func(t *testing.T, mut *executor.RequestMutation) {
+			validate: func(t *testing.T, exec *executor.Executor, mut *executor.RequestMutation) {
 				if mut.Body == nil {
 					t.Fatal("expected Body to be set")
 				}
@@ -175,7 +175,7 @@ func TestExecutor_ExecuteRequestActions(t *testing.T) {
 				},
 			},
 			ev: &fetch.RequestPausedReply{},
-			validate: func(t *testing.T, mut *executor.RequestMutation) {
+			validate: func(t *testing.T, exec *executor.Executor, mut *executor.RequestMutation) {
 				if mut.Body == nil {
 					t.Fatal("expected Body to be set")
 				}
@@ -195,7 +195,7 @@ func TestExecutor_ExecuteRequestActions(t *testing.T) {
 				},
 			},
 			ev: createRequestWithPostData("old old old"),
-			validate: func(t *testing.T, mut *executor.RequestMutation) {
+			validate: func(t *testing.T, exec *executor.Executor, mut *executor.RequestMutation) {
 				if mut.Body == nil {
 					t.Fatal("expected Body to be set")
 				}
@@ -215,7 +215,7 @@ func TestExecutor_ExecuteRequestActions(t *testing.T) {
 				},
 			},
 			ev: createRequestWithPostData("old old old"),
-			validate: func(t *testing.T, mut *executor.RequestMutation) {
+			validate: func(t *testing.T, exec *executor.Executor, mut *executor.RequestMutation) {
 				if mut.Body == nil {
 					t.Fatal("expected Body to be set")
 				}
@@ -236,7 +236,7 @@ func TestExecutor_ExecuteRequestActions(t *testing.T) {
 				},
 			},
 			ev: createRequestWithPostData(`{"name":"Bob","email":"bob@example.com"}`),
-			validate: func(t *testing.T, mut *executor.RequestMutation) {
+			validate: func(t *testing.T, exec *executor.Executor, mut *executor.RequestMutation) {
 				if mut.Body == nil {
 					t.Fatal("expected Body to be set")
 				}
@@ -263,18 +263,19 @@ func TestExecutor_ExecuteRequestActions(t *testing.T) {
 				},
 			},
 			ev: &fetch.RequestPausedReply{},
-			validate: func(t *testing.T, mut *executor.RequestMutation) {
-				if mut.Block == nil {
+			validate: func(t *testing.T, exec *executor.Executor, mut *executor.RequestMutation) {
+				block := exec.Block()
+				if block == nil {
 					t.Fatal("expected Block to be set")
 				}
-				if mut.Block.StatusCode != 403 {
-					t.Errorf("expected status 403, got %d", mut.Block.StatusCode)
+				if block.StatusCode != 403 {
+					t.Errorf("expected status 403, got %d", block.StatusCode)
 				}
-				if mut.Block.Headers["X-Blocked"] != "true" {
+				if block.Headers["X-Blocked"] != "true" {
 					t.Errorf("expected X-Blocked header")
 				}
-				if string(mut.Block.Body) != "Access Denied" {
-					t.Errorf("expected body 'Access Denied', got '%s'", string(mut.Block.Body))
+				if string(block.Body) != "Access Denied" {
+					t.Errorf("expected body 'Access Denied', got '%s'", string(block.Body))
 				}
 			},
 		},
@@ -289,12 +290,13 @@ func TestExecutor_ExecuteRequestActions(t *testing.T) {
 				},
 			},
 			ev: &fetch.RequestPausedReply{},
-			validate: func(t *testing.T, mut *executor.RequestMutation) {
-				if mut.Block == nil {
+			validate: func(t *testing.T, exec *executor.Executor, mut *executor.RequestMutation) {
+				block := exec.Block()
+				if block == nil {
 					t.Fatal("expected Block to be set")
 				}
-				if string(mut.Block.Body) != "Not Found" {
-					t.Errorf("expected decoded body 'Not Found', got '%s'", string(mut.Block.Body))
+				if string(block.Body) != "Not Found" {
+					t.Errorf("expected decoded body 'Not Found', got '%s'", string(block.Body))
 				}
 			},
 		},
@@ -306,7 +308,7 @@ func TestExecutor_ExecuteRequestActions(t *testing.T) {
 				{Type: rulespec.ActionSetBody, Value: `{"modified":true}`},
 			},
 			ev: &fetch.RequestPausedReply{},
-			validate: func(t *testing.T, mut *executor.RequestMutation) {
+			validate: func(t *testing.T, exec *executor.Executor, mut *executor.RequestMutation) {
 				if mut.URL == nil || *mut.URL != "https://api.example.com" {
 					t.Error("URL not set correctly")
 				}
@@ -322,7 +324,7 @@ func TestExecutor_ExecuteRequestActions(t *testing.T) {
 			name:    "空操作列表",
 			actions: []rulespec.Action{},
 			ev:      &fetch.RequestPausedReply{},
-			validate: func(t *testing.T, mut *executor.RequestMutation) {
+			validate: func(t *testing.T, exec *executor.Executor, mut *executor.RequestMutation) {
 				if mut == nil {
 					t.Fatal("expected non-nil mutation")
 				}
@@ -334,14 +336,14 @@ func TestExecutor_ExecuteRequestActions(t *testing.T) {
 		},
 	}
 
-	exec := executor.New(logger.NewNop())
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mut := exec.ExecuteRequestActions(tt.actions, tt.ev)
+			exec := executor.New(logger.NewNop(), tt.ev, executor.Options{})
+			mut := exec.ExecuteRequestActions(tt.actions)
 			if mut == nil {
 				t.Fatal("expected non-nil mutation")
 			}
-			tt.validate(t, mut)
+			tt.validate(t, exec, mut)
 		})
 	}
 }
@@ -565,10 +567,10 @@ func TestExecutor_ExecuteResponseActions(t *testing.T) {
 		},
 	}
 
-	exec := executor.New(logger.NewNop())
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mut := exec.ExecuteResponseActions(tt.actions, tt.ev, tt.responseBody)
+			exec := executor.New(logger.NewNop(), tt.ev, executor.Options{})
+			mut := exec.ExecuteResponseActions(tt.actions, tt.responseBody)
 			if mut == nil {
 				t.Fatal("expected non-nil mutation")
 			}

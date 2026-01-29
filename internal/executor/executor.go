@@ -9,13 +9,15 @@ import (
 	"strings"
 	"time"
 
+	"cdpnetool/internal/logger"
+	"cdpnetool/internal/protocol"
+	"cdpnetool/internal/rules"
+	"cdpnetool/pkg/domain"
+	"cdpnetool/pkg/rulespec"
+
 	"github.com/mafredri/cdp"
 	"github.com/mafredri/cdp/protocol/fetch"
 	"github.com/tidwall/sjson"
-
-	"cdpnetool/internal/logger"
-	"cdpnetool/internal/protocol"
-	"cdpnetool/pkg/rulespec"
 )
 
 // RequestMutation 请求修改结果
@@ -29,7 +31,6 @@ type RequestMutation struct {
 	Cookies       map[string]string
 	RemoveCookies []string
 	Body          *string
-	Block         *BlockResponse // 终结性行为
 }
 
 // BlockResponse 拦截响应
@@ -47,18 +48,191 @@ type ResponseMutation struct {
 	Body          *string
 }
 
-// Executor 行为执行器
+// Options 执行器配置
+type Options struct {
+	MaxCaptureSize int64         // 响应体采集限制
+	ProcessTimeout time.Duration // 处理超时
+}
+
+// Executor 行为执行器（单次请求生命周期绑定）
 type Executor struct {
-	log logger.Logger
+	log    logger.Logger
+	ev     *fetch.RequestPausedReply
+	opts   Options
+	reqMut *RequestMutation
+	resMut *ResponseMutation
+	block  *BlockResponse // 终结性行为状态
 }
 
 // New 创建行为执行器
-func New(log logger.Logger) *Executor {
-	return &Executor{log: log}
+func New(log logger.Logger, ev *fetch.RequestPausedReply, opts Options) *Executor {
+	return &Executor{
+		log:  log,
+		ev:   ev,
+		opts: opts,
+	}
 }
 
-// ExecuteRequestActions 执行请求阶段的行为，返回修改结果
-func (e *Executor) ExecuteRequestActions(actions []rulespec.Action, ev *fetch.RequestPausedReply) *RequestMutation {
+// ExecutionResult 汇总单次执行的结果
+type ExecutionResult struct {
+	IsBlocked    bool
+	IsModified   bool
+	IsLongConn   bool
+	ContinueArgs *fetch.ContinueRequestArgs
+	FulfillArgs  *fetch.FulfillRequestArgs
+	ContinueRes  *fetch.ContinueResponseArgs
+}
+
+// ExecuteRequest 批量执行请求阶段动作
+func (e *Executor) ExecuteRequest(matchedRules []*rules.MatchedRule) *ExecutionResult {
+	e.reqMut = &RequestMutation{
+		Headers:       make(map[string]string),
+		Query:         make(map[string]string),
+		Cookies:       make(map[string]string),
+		RemoveHeaders: []string{},
+		RemoveQuery:   []string{},
+		RemoveCookies: []string{},
+	}
+
+	for _, mr := range matchedRules {
+		if mr.Rule.Stage != rulespec.StageRequest {
+			continue
+		}
+		mut := e.ExecuteRequestActions(mr.Rule.Actions)
+		if e.block != nil {
+			break
+		}
+		e.reqMut.Merge(mut)
+	}
+
+	res := &ExecutionResult{
+		IsBlocked:  e.block != nil,
+		IsModified: e.HasRequestMutation(),
+		IsLongConn: e.IsLongConnectionType(),
+	}
+	res.ContinueArgs, res.FulfillArgs = e.BuildRequestArgs(e.reqMut)
+	return res
+}
+
+// Merge 合并请求修改结果
+func (m *RequestMutation) Merge(src *RequestMutation) {
+	if src == nil {
+		return
+	}
+	if src.URL != nil {
+		m.URL = src.URL
+	}
+	if src.Method != nil {
+		m.Method = src.Method
+	}
+	for k, v := range src.Headers {
+		if m.Headers == nil {
+			m.Headers = make(map[string]string)
+		}
+		m.Headers[k] = v
+	}
+	for k, v := range src.Query {
+		if m.Query == nil {
+			m.Query = make(map[string]string)
+		}
+		m.Query[k] = v
+	}
+	for k, v := range src.Cookies {
+		if m.Cookies == nil {
+			m.Cookies = make(map[string]string)
+		}
+		m.Cookies[k] = v
+	}
+	m.RemoveHeaders = append(m.RemoveHeaders, src.RemoveHeaders...)
+	m.RemoveQuery = append(m.RemoveQuery, src.RemoveQuery...)
+	m.RemoveCookies = append(m.RemoveCookies, src.RemoveCookies...)
+	if src.Body != nil {
+		m.Body = src.Body
+	}
+}
+
+// ExecuteResponse 批量执行响应阶段动作
+func (e *Executor) ExecuteResponse(matchedRules []*rules.MatchedRule, originalBody string) *ExecutionResult {
+	e.resMut = &ResponseMutation{
+		Headers:       make(map[string]string),
+		RemoveHeaders: []string{},
+	}
+	currentBody := originalBody
+
+	for _, mr := range matchedRules {
+		if mr.Rule.Stage != rulespec.StageResponse {
+			continue
+		}
+		mut := e.ExecuteResponseActions(mr.Rule.Actions, currentBody)
+		e.resMut.Merge(mut)
+		if mut.Body != nil {
+			currentBody = *mut.Body
+		}
+	}
+
+	// 自动补充 Body 变更（如果合并后的 Body 发生了变化但没有显式设置）
+	if e.resMut.Body == nil && currentBody != originalBody {
+		e.resMut.Body = &currentBody
+	}
+
+	res := &ExecutionResult{
+		IsModified: e.HasResponseMutation(),
+	}
+	res.ContinueRes, res.FulfillArgs = e.BuildResponseArgs(e.resMut)
+	return res
+}
+
+// Merge 合并响应修改结果
+func (m *ResponseMutation) Merge(src *ResponseMutation) {
+	if src == nil {
+		return
+	}
+	if src.StatusCode != nil {
+		m.StatusCode = src.StatusCode
+	}
+	for k, v := range src.Headers {
+		if m.Headers == nil {
+			m.Headers = make(map[string]string)
+		}
+		m.Headers[k] = v
+	}
+	m.RemoveHeaders = append(m.RemoveHeaders, src.RemoveHeaders...)
+	if src.Body != nil {
+		m.Body = src.Body
+	}
+}
+
+// HasRequestMutation 检查是否有实际的请求变更
+func (e *Executor) HasRequestMutation() bool {
+	if e.block != nil {
+		return true
+	}
+	m := e.reqMut
+	if m == nil {
+		return false
+	}
+	return m.URL != nil || m.Method != nil ||
+		len(m.Headers) > 0 || len(m.Query) > 0 || len(m.Cookies) > 0 ||
+		len(m.RemoveHeaders) > 0 || len(m.RemoveQuery) > 0 || len(m.RemoveCookies) > 0 ||
+		m.Body != nil
+}
+
+// HasResponseMutation 检查是否有实际的响应变更
+func (e *Executor) HasResponseMutation() bool {
+	m := e.resMut
+	if m == nil {
+		return false
+	}
+	return m.StatusCode != nil || len(m.Headers) > 0 || len(m.RemoveHeaders) > 0 || m.Body != nil
+}
+
+// Block 返回当前的阻止行为状态
+func (e *Executor) Block() *BlockResponse {
+	return e.block
+}
+
+// ExecuteRequestActions 执行单个规则内的动作序列
+func (e *Executor) ExecuteRequestActions(actions []rulespec.Action) *RequestMutation {
 	mut := &RequestMutation{
 		Headers:       make(map[string]string),
 		Query:         make(map[string]string),
@@ -69,7 +243,7 @@ func (e *Executor) ExecuteRequestActions(actions []rulespec.Action, ev *fetch.Re
 	}
 
 	// 获取当前请求体用于修改
-	currentBody := protocol.GetRequestBody(ev)
+	currentBody := protocol.GetRequestBody(e.ev)
 
 	for _, action := range actions {
 		switch action.Type {
@@ -140,7 +314,7 @@ func (e *Executor) ExecuteRequestActions(actions []rulespec.Action, ev *fetch.Re
 			mut.Body = &currentBody
 
 		case rulespec.ActionPatchBodyJson:
-			newBody, err := e.applyJSONPatches(currentBody, action.Patches, ev.RequestID)
+			newBody, err := e.applyJSONPatches(currentBody, action.Patches)
 			if err == nil {
 				currentBody = newBody
 				mut.Body = &currentBody
@@ -148,17 +322,17 @@ func (e *Executor) ExecuteRequestActions(actions []rulespec.Action, ev *fetch.Re
 
 		case rulespec.ActionSetFormField:
 			if v, ok := action.Value.(string); ok {
-				currentBody = e.setFormField(currentBody, action.Name, v, ev)
+				currentBody = e.setFormField(currentBody, action.Name, v)
 				mut.Body = &currentBody
 			}
 
 		case rulespec.ActionRemoveFormField:
-			currentBody = e.removeFormField(currentBody, action.Name, ev)
+			currentBody = e.removeFormField(currentBody, action.Name)
 			mut.Body = &currentBody
 
 		case rulespec.ActionBlock:
 			// 终结性行为
-			mut.Block = &BlockResponse{
+			e.block = &BlockResponse{
 				StatusCode: action.StatusCode,
 				Headers:    action.Headers,
 			}
@@ -166,15 +340,16 @@ func (e *Executor) ExecuteRequestActions(actions []rulespec.Action, ev *fetch.Re
 				body := action.Body
 				if action.GetBodyEncoding() == rulespec.BodyEncodingBase64 {
 					if decoded, err := base64.StdEncoding.DecodeString(action.Body); err == nil {
-						mut.Block.Body = decoded
+						e.block.Body = decoded
 					} else {
-						mut.Block.Body = []byte(body)
+						e.block.Body = []byte(body)
 					}
 				} else {
-					mut.Block.Body = []byte(body)
+					e.block.Body = []byte(body)
 				}
 			}
-			return mut // 终结性行为，立即返回
+			// 终结性行为，立即返回
+			return mut
 		}
 	}
 
@@ -182,7 +357,7 @@ func (e *Executor) ExecuteRequestActions(actions []rulespec.Action, ev *fetch.Re
 }
 
 // ExecuteResponseActions 执行响应阶段的行为，返回修改结果
-func (e *Executor) ExecuteResponseActions(actions []rulespec.Action, ev *fetch.RequestPausedReply, responseBody string) *ResponseMutation {
+func (e *Executor) ExecuteResponseActions(actions []rulespec.Action, responseBody string) *ResponseMutation {
 	mut := &ResponseMutation{
 		Headers:       make(map[string]string),
 		RemoveHeaders: []string{},
@@ -241,7 +416,7 @@ func (e *Executor) ExecuteResponseActions(actions []rulespec.Action, ev *fetch.R
 			mut.Body = &currentBody
 
 		case rulespec.ActionPatchBodyJson:
-			newBody, err := e.applyJSONPatches(currentBody, action.Patches, ev.RequestID)
+			newBody, err := e.applyJSONPatches(currentBody, action.Patches)
 			if err == nil {
 				currentBody = newBody
 				mut.Body = &currentBody
@@ -252,36 +427,28 @@ func (e *Executor) ExecuteResponseActions(actions []rulespec.Action, ev *fetch.R
 	return mut
 }
 
-// ApplyRequestMutation 应用请求修改到 CDP
-func (e *Executor) ApplyRequestMutation(ctx context.Context, client *cdp.Client, ev *fetch.RequestPausedReply, mut *RequestMutation) error {
-	if client == nil {
-		return fmt.Errorf("client is nil")
-	}
-
+// BuildRequestArgs 构建请求阶段的 CDP 参数
+func (e *Executor) BuildRequestArgs(mut *RequestMutation) (*fetch.ContinueRequestArgs, *fetch.FulfillRequestArgs) {
 	// 处理终结性行为 block
-	if mut.Block != nil {
+	if e.block != nil {
 		args := &fetch.FulfillRequestArgs{
-			RequestID:    ev.RequestID,
-			ResponseCode: mut.Block.StatusCode,
+			RequestID:    e.ev.RequestID,
+			ResponseCode: e.block.StatusCode,
 		}
-		if len(mut.Block.Headers) > 0 {
-			args.ResponseHeaders = toHeaderEntries(mut.Block.Headers)
+		if len(e.block.Headers) > 0 {
+			args.ResponseHeaders = toHeaderEntries(e.block.Headers)
 		}
-		if len(mut.Block.Body) > 0 {
-			args.Body = mut.Block.Body
+		if len(e.block.Body) > 0 {
+			args.Body = e.block.Body
 		}
-		err := client.Fetch.FulfillRequest(ctx, args)
-		if err != nil {
-			e.log.Err(err, "执行 FulfillRequest (Block) 失败", "requestID", ev.RequestID)
-		}
-		return err
+		return nil, args
 	}
 
 	// 构建 ContinueRequest 参数
-	args := &fetch.ContinueRequestArgs{RequestID: ev.RequestID}
+	args := &fetch.ContinueRequestArgs{RequestID: e.ev.RequestID}
 
 	// URL 修改（包含 Query 修改）
-	finalURL := e.buildFinalURL(ev.Request.URL, mut)
+	finalURL := e.buildFinalURL(e.ev.Request.URL, mut)
 	if finalURL != nil {
 		args.URL = finalURL
 	}
@@ -292,7 +459,7 @@ func (e *Executor) ApplyRequestMutation(ctx context.Context, client *cdp.Client,
 	}
 
 	// Headers 修改
-	headers := e.buildFinalHeaders(ev, mut)
+	headers := e.buildFinalHeaders(mut)
 	if len(headers) > 0 {
 		args.Headers = headers
 	}
@@ -302,119 +469,81 @@ func (e *Executor) ApplyRequestMutation(ctx context.Context, client *cdp.Client,
 		args.PostData = []byte(*mut.Body)
 	}
 
-	err := client.Fetch.ContinueRequest(ctx, args)
-	if err != nil {
-		e.log.Err(err, "执行 ContinueRequest 失败", "requestID", ev.RequestID)
-	}
-	return err
+	return args, nil
 }
 
-// ApplyResponseMutation 应用响应修改到 CDP
-func (e *Executor) ApplyResponseMutation(ctx context.Context, client *cdp.Client, ev *fetch.RequestPausedReply, mut *ResponseMutation) error {
-	if client == nil {
-		return fmt.Errorf("client is nil")
-	}
-
+// BuildResponseArgs 构建响应阶段的 CDP 参数
+func (e *Executor) BuildResponseArgs(mut *ResponseMutation) (*fetch.ContinueResponseArgs, *fetch.FulfillRequestArgs) {
 	// 如果需要修改 Body，必须使用 FulfillRequest
 	if mut.Body != nil {
 		code := 200
-		if ev.ResponseStatusCode != nil {
-			code = *ev.ResponseStatusCode
+		if e.ev.ResponseStatusCode != nil {
+			code = *e.ev.ResponseStatusCode
 		}
 		if mut.StatusCode != nil {
 			code = *mut.StatusCode
 		}
 
-		headers := e.buildFinalResponseHeaders(ev, mut)
+		headers := e.buildFinalResponseHeaders(mut)
 
 		args := &fetch.FulfillRequestArgs{
-			RequestID:       ev.RequestID,
+			RequestID:       e.ev.RequestID,
 			ResponseCode:    code,
 			ResponseHeaders: headers,
 			Body:            []byte(*mut.Body),
 		}
-		if err := client.Fetch.FulfillRequest(ctx, args); err != nil {
-			e.log.Err(err, "执行 FulfillRequest 失败", "requestID", ev.RequestID)
-			// 兜底：如果 FulfillRequest 失败，执行 ContinueResponse 以避免请求挂起
-			_ = client.Fetch.ContinueResponse(ctx, &fetch.ContinueResponseArgs{RequestID: ev.RequestID})
-			return err
-		}
-		return nil
+		return nil, args
 	}
 
 	// 只修改状态码和头部，使用 ContinueResponse
-	args := &fetch.ContinueResponseArgs{RequestID: ev.RequestID}
+	args := &fetch.ContinueResponseArgs{RequestID: e.ev.RequestID}
 
-	// CDP 要求：如果要覆盖响应状态码或响应头，则两者必须同时提供
+	// CDP 要求：如果要覆盖响应状态码或响应头，则两者必须同时提供，否则会报错
 	hasMutation := mut.StatusCode != nil || len(mut.Headers) > 0 || len(mut.RemoveHeaders) > 0
 
 	if hasMutation {
 		code := 200
-		if ev.ResponseStatusCode != nil {
-			code = *ev.ResponseStatusCode
+		if e.ev.ResponseStatusCode != nil {
+			code = *e.ev.ResponseStatusCode
 		}
 		if mut.StatusCode != nil {
 			code = *mut.StatusCode
 		}
 		args.ResponseCode = &code
-		args.ResponseHeaders = e.buildFinalResponseHeaders(ev, mut)
+		args.ResponseHeaders = e.buildFinalResponseHeaders(mut)
 	}
 
-	e.log.Debug("执行 ContinueResponse", "requestID", ev.RequestID, "args", args)
-	err := client.Fetch.ContinueResponse(ctx, args)
-	if err != nil {
-		e.log.Err(err, "执行 ContinueResponse 失败", "requestID", ev.RequestID)
-	}
-	return err
-}
-
-// ContinueRequest 继续原请求
-func (e *Executor) ContinueRequest(ctx context.Context, client *cdp.Client, ev *fetch.RequestPausedReply) error {
-	if client == nil {
-		return fmt.Errorf("client is nil")
-	}
-	err := client.Fetch.ContinueRequest(ctx, &fetch.ContinueRequestArgs{RequestID: ev.RequestID})
-	if err != nil {
-		e.log.Err(err, "执行 ContinueRequest 失败", "requestID", ev.RequestID)
-	}
-	return err
-}
-
-// ContinueResponse 继续原响应
-func (e *Executor) ContinueResponse(ctx context.Context, client *cdp.Client, ev *fetch.RequestPausedReply) error {
-	if client == nil {
-		return fmt.Errorf("client is nil")
-	}
-	err := client.Fetch.ContinueResponse(ctx, &fetch.ContinueResponseArgs{RequestID: ev.RequestID})
-	if err != nil {
-		e.log.Err(err, "执行 ContinueResponse 失败", "requestID", ev.RequestID)
-	}
-	return err
+	return args, nil
 }
 
 // FetchResponseBody 获取响应体
-func (e *Executor) FetchResponseBody(ctx context.Context, client *cdp.Client, requestID fetch.RequestID) (string, bool) {
+func (e *Executor) FetchResponseBody(ctx context.Context, client *cdp.Client) (string, error) {
 	if client == nil {
-		return "", false
+		return "", fmt.Errorf("cdp client is nil")
 	}
-	ctx2, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+
+	timeout := e.opts.ProcessTimeout
+	if timeout <= 0 {
+		timeout = 500 * time.Millisecond // 默认保底超时
+	}
+
+	ctx2, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	rb, err := client.Fetch.GetResponseBody(ctx2, &fetch.GetResponseBodyArgs{RequestID: requestID})
+	rb, err := client.Fetch.GetResponseBody(ctx2, &fetch.GetResponseBodyArgs{RequestID: e.ev.RequestID})
 	if err != nil {
-		e.log.Err(err, "获取响应体失败", "requestID", requestID)
-		return "", false
+		return "", err
 	}
 	if rb == nil {
-		return "", false
+		return "", fmt.Errorf("response body is nil")
 	}
 	if rb.Base64Encoded {
-		if b, err := base64.StdEncoding.DecodeString(rb.Body); err == nil {
-			return string(b), true
+		b, err := base64.StdEncoding.DecodeString(rb.Body)
+		if err != nil {
+			return "", fmt.Errorf("base64 decode failed: %w", err)
 		}
-		e.log.Err(fmt.Errorf("base64 decode failed"), "解码响应体失败", "requestID", requestID)
-		return "", false
+		return string(b), nil
 	}
-	return rb.Body, true
+	return rb.Body, nil
 }
 
 // buildFinalURL 构建最终 URL
@@ -455,19 +584,16 @@ func (e *Executor) buildFinalURL(originalURL string, mut *RequestMutation) *stri
 }
 
 // buildFinalHeaders 构建最终请求头
-func (e *Executor) buildFinalHeaders(ev *fetch.RequestPausedReply, mut *RequestMutation) []fetch.HeaderEntry {
+func (e *Executor) buildFinalHeaders(mut *RequestMutation) []fetch.HeaderEntry {
 	// 解析原始头部
 	originalHeaders := make(map[string]string)
-	if err := json.Unmarshal(ev.Request.Headers, &originalHeaders); err != nil {
-		e.log.Err(err, "解析原始请求头失败", "requestID", ev.RequestID)
-		// 如果解析失败，仍然应用修改后的头部，但会丢失原始头部
+	if err := json.Unmarshal(e.ev.Request.Headers, &originalHeaders); err != nil {
+		e.log.Err(err, "解析原始请求头失败", "requestID", e.ev.RequestID)
 	}
 
-	// 应用修改
-	// 1. 移除头部
+	// 移除头部
 	for _, name := range mut.RemoveHeaders {
 		delete(originalHeaders, name)
-		// 不区分大小写删除
 		for k := range originalHeaders {
 			if strings.EqualFold(k, name) {
 				delete(originalHeaders, k)
@@ -475,12 +601,12 @@ func (e *Executor) buildFinalHeaders(ev *fetch.RequestPausedReply, mut *RequestM
 		}
 	}
 
-	// 2. 设置头部
+	// 设置头部
 	for name, value := range mut.Headers {
 		originalHeaders[name] = value
 	}
 
-	// 3. 处理 Cookie 修改
+	// 处理 Cookie 修改
 	if len(mut.Cookies) > 0 || len(mut.RemoveCookies) > 0 {
 		cookieStr := ""
 		for k, v := range originalHeaders {
@@ -517,10 +643,10 @@ func (e *Executor) buildFinalHeaders(ev *fetch.RequestPausedReply, mut *RequestM
 }
 
 // buildFinalResponseHeaders 构建最终响应头
-func (e *Executor) buildFinalResponseHeaders(ev *fetch.RequestPausedReply, mut *ResponseMutation) []fetch.HeaderEntry {
+func (e *Executor) buildFinalResponseHeaders(mut *ResponseMutation) []fetch.HeaderEntry {
 	// 获取原始响应头
 	headers := make(map[string]string)
-	for _, h := range ev.ResponseHeaders {
+	for _, h := range e.ev.ResponseHeaders {
 		headers[h.Name] = h.Value
 	}
 
@@ -555,17 +681,8 @@ func (e *Executor) buildFinalResponseHeaders(ev *fetch.RequestPausedReply, mut *
 	return toHeaderEntries(headers)
 }
 
-// toHeaderEntries 将头部映射转换为 CDP 头部条目
-func toHeaderEntries(h map[string]string) []fetch.HeaderEntry {
-	out := make([]fetch.HeaderEntry, 0, len(h))
-	for k, v := range h {
-		out = append(out, fetch.HeaderEntry{Name: k, Value: v})
-	}
-	return out
-}
-
 // applyJSONPatches 应用 JSON Patch 操作，使用 sjson 实现高性能修改
-func (e *Executor) applyJSONPatches(body string, patches []rulespec.JSONPatchOp, requestID fetch.RequestID) (string, error) {
+func (e *Executor) applyJSONPatches(body string, patches []rulespec.JSONPatchOp) (string, error) {
 	if body == "" || len(patches) == 0 {
 		return body, nil
 	}
@@ -587,13 +704,13 @@ func (e *Executor) applyJSONPatches(body string, patches []rulespec.JSONPatchOp,
 		case "add", "replace":
 			currentBody, err = sjson.Set(currentBody, path, patch.Value)
 			if err != nil {
-				e.log.Err(err, "sjson set error", "requestID", requestID, "path", path, "op", patch.Op)
+				e.log.Err(err, "sjson set error", "requestID", e.ev.RequestID, "path", path, "op", patch.Op)
 				return body, err
 			}
 		case "remove":
 			currentBody, err = sjson.Delete(currentBody, path)
 			if err != nil {
-				e.log.Err(err, "sjson delete error", "requestID", requestID, "path", path)
+				e.log.Err(err, "sjson delete error", "requestID", e.ev.RequestID, "path", path)
 				return body, err
 			}
 		}
@@ -603,8 +720,8 @@ func (e *Executor) applyJSONPatches(body string, patches []rulespec.JSONPatchOp,
 }
 
 // setFormField 设置表单字段
-func (e *Executor) setFormField(body, name, value string, ev *fetch.RequestPausedReply) string {
-	contentType := getContentType(ev, e.log)
+func (e *Executor) setFormField(body, name, value string) string {
+	contentType := e.getContentType()
 
 	if strings.Contains(contentType, "application/x-www-form-urlencoded") {
 		return setURLEncodedField(body, name, value)
@@ -619,8 +736,8 @@ func (e *Executor) setFormField(body, name, value string, ev *fetch.RequestPause
 }
 
 // removeFormField 移除表单字段
-func (e *Executor) removeFormField(body, name string, ev *fetch.RequestPausedReply) string {
-	contentType := getContentType(ev, e.log)
+func (e *Executor) removeFormField(body, name string) string {
+	contentType := e.getContentType()
 
 	if strings.Contains(contentType, "application/x-www-form-urlencoded") {
 		return removeURLEncodedField(body, name)
@@ -632,6 +749,173 @@ func (e *Executor) removeFormField(body, name string, ev *fetch.RequestPausedRep
 	}
 
 	return body
+}
+
+// getContentType 获取 Content-Type
+func (e *Executor) getContentType() string {
+	var headers map[string]string
+	_ = json.Unmarshal(e.ev.Request.Headers, &headers)
+	for k, v := range headers {
+		if strings.EqualFold(k, "content-type") {
+			return v
+		}
+	}
+	return ""
+}
+
+// CaptureRequestSnapshot 捕获当前请求的最终快照（包含修改后的结果）
+func (e *Executor) CaptureRequestSnapshot() domain.RequestInfo {
+	// 获取原始信息
+	req := domain.RequestInfo{
+		URL:          e.ev.Request.URL,
+		Method:       e.ev.Request.Method,
+		Headers:      make(map[string]string),
+		ResourceType: string(e.ev.ResourceType),
+		Body:         protocol.GetRequestBody(e.ev),
+	}
+	_ = json.Unmarshal(e.ev.Request.Headers, &req.Headers)
+
+	// 应用 Mutation 效果到审计快照
+	if e.reqMut != nil {
+		if e.reqMut.URL != nil {
+			req.URL = *e.reqMut.URL
+		}
+		if e.reqMut.Method != nil {
+			req.Method = *e.reqMut.Method
+		}
+		for _, name := range e.reqMut.RemoveHeaders {
+			delete(req.Headers, name)
+		}
+		for name, val := range e.reqMut.Headers {
+			req.Headers[name] = val
+		}
+		if e.reqMut.Body != nil {
+			req.Body = *e.reqMut.Body
+		}
+	}
+	return req
+}
+
+// CaptureResponseSnapshot 捕获当前响应的最终快照
+func (e *Executor) CaptureResponseSnapshot(finalBody string) domain.ResponseInfo {
+	res := domain.ResponseInfo{
+		Headers: make(map[string]string),
+		Body:    finalBody,
+	}
+	if e.ev.ResponseStatusCode != nil {
+		res.StatusCode = *e.ev.ResponseStatusCode
+	}
+	for _, h := range e.ev.ResponseHeaders {
+		res.Headers[h.Name] = h.Value
+	}
+
+	if e.resMut != nil {
+		if e.resMut.StatusCode != nil {
+			res.StatusCode = *e.resMut.StatusCode
+		}
+		for _, name := range e.resMut.RemoveHeaders {
+			delete(res.Headers, name)
+		}
+		for name, val := range e.resMut.Headers {
+			res.Headers[name] = val
+		}
+	}
+	return res
+}
+
+// IsLongConnectionType 识别天生就是长连接的请求类型
+func (e *Executor) IsLongConnectionType() bool {
+	rt := string(e.ev.ResourceType)
+	if rt == "WebSocket" || rt == "EventSource" {
+		return true
+	}
+	// 解析 Header 检查 Upgrade
+	var headers map[string]string
+	_ = json.Unmarshal(e.ev.Request.Headers, &headers)
+	for k, v := range headers {
+		if strings.EqualFold(k, "upgrade") && strings.EqualFold(v, "websocket") {
+			return true
+		}
+	}
+	return false
+}
+
+// IsUnsafeResponseBody 识别不宜读取 Body 的响应（如大文件或流）
+func (e *Executor) IsUnsafeResponseBody() (bool, string) {
+	for _, h := range e.ev.ResponseHeaders {
+		name := strings.ToLower(h.Name)
+		if name == "content-length" {
+			var size int64
+			fmt.Sscanf(h.Value, "%d", &size)
+			if size > e.opts.MaxCaptureSize && e.opts.MaxCaptureSize > 0 {
+				return true, fmt.Sprintf("size exceeds limit (%d bytes)", size)
+			}
+		}
+		if name == "content-type" {
+			ct := strings.ToLower(h.Value)
+			if strings.HasPrefix(ct, "video/") || strings.HasPrefix(ct, "audio/") ||
+				strings.HasPrefix(ct, "text/event-stream") || ct == "application/octet-stream" {
+				return true, "streaming or binary content-type: " + ct
+			}
+		}
+	}
+	return false, ""
+}
+
+// ToEvalContext 将 CDP 事件转换为规则引擎评估上下文
+func ToEvalContext(ev *fetch.RequestPausedReply) *rules.EvalContext {
+	headers := map[string]string{}
+	query := map[string]string{}
+	cookies := map[string]string{}
+	var resourceType string
+
+	if ev.ResourceType != "" {
+		resourceType = string(ev.ResourceType)
+	}
+
+	_ = json.Unmarshal(ev.Request.Headers, &headers)
+	if len(headers) > 0 {
+		normalized := make(map[string]string, len(headers))
+		for k, v := range headers {
+			normalized[strings.ToLower(k)] = v
+		}
+		headers = normalized
+	}
+
+	if ev.Request.URL != "" {
+		if u, err := url.Parse(ev.Request.URL); err == nil {
+			for key, vals := range u.Query() {
+				if len(vals) > 0 {
+					query[strings.ToLower(key)] = vals[0]
+				}
+			}
+		}
+	}
+
+	if v, ok := headers["cookie"]; ok {
+		for name, val := range protocol.ParseCookie(v) {
+			cookies[strings.ToLower(name)] = val
+		}
+	}
+
+	return &rules.EvalContext{
+		URL:          ev.Request.URL,
+		Method:       ev.Request.Method,
+		ResourceType: resourceType,
+		Headers:      headers,
+		Query:        query,
+		Cookies:      cookies,
+		Body:         protocol.GetRequestBody(ev),
+	}
+}
+
+// toHeaderEntries 将头部映射转换为 CDP 头部条目
+func toHeaderEntries(h map[string]string) []fetch.HeaderEntry {
+	out := make([]fetch.HeaderEntry, 0, len(h))
+	for k, v := range h {
+		out = append(out, fetch.HeaderEntry{Name: k, Value: v})
+	}
+	return out
 }
 
 // setURLEncodedField 设置 URL 编码表单字段
@@ -652,22 +936,4 @@ func removeURLEncodedField(body, name string) string {
 	}
 	values.Del(name)
 	return values.Encode()
-}
-
-// getContentType 获取 Content-Type
-func getContentType(ev *fetch.RequestPausedReply, log logger.Logger) string {
-	var headers map[string]string
-	if err := json.Unmarshal(ev.Request.Headers, &headers); err != nil {
-		if log != nil {
-			log.Err(err, "解析请求头获取 Content-Type 失败", "requestID", ev.RequestID)
-		}
-		return ""
-	}
-
-	for k, v := range headers {
-		if strings.EqualFold(k, "content-type") {
-			return v
-		}
-	}
-	return ""
 }
