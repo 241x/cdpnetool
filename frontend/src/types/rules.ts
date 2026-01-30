@@ -73,6 +73,7 @@ export type ActionType =
   | 'setHeader'
   | 'removeHeader'
   | 'setBody'
+  | 'appendBody'
   | 'replaceBodyText'
   | 'patchBodyJson'
 
@@ -226,14 +227,14 @@ export const CONDITION_TYPE_SHORT_LABELS: Record<ConditionType, string> = {
 export const REQUEST_ACTIONS: ActionType[] = [
   'setUrl', 'setMethod', 'setHeader', 'removeHeader',
   'setQueryParam', 'removeQueryParam', 'setCookie', 'removeCookie',
-  'setBody', 'replaceBodyText', 'patchBodyJson',
+  'setBody', 'appendBody', 'replaceBodyText', 'patchBodyJson',
   'setFormField', 'removeFormField', 'block'
 ]
 
 // 响应阶段可用行为
 export const RESPONSE_ACTIONS: ActionType[] = [
   'setStatus', 'setHeader', 'removeHeader',
-  'setBody', 'replaceBodyText', 'patchBodyJson'
+  'setBody', 'appendBody', 'replaceBodyText', 'patchBodyJson'
 ]
 
 // 行为类型标签
@@ -247,6 +248,7 @@ export const ACTION_TYPE_LABELS: Record<ActionType, string> = {
   setCookie: '设置 Cookie',
   removeCookie: '移除 Cookie',
   setBody: '替换 Body',
+  appendBody: '追加 Body',
   replaceBodyText: '文本替换 Body',
   patchBodyJson: 'JSON Patch',
   setFormField: '设置表单字段',
@@ -305,6 +307,7 @@ export function createEmptyAction(type: ActionType = 'setHeader', _stage: Stage 
     case 'removeFormField':
       return { type, name: '' }
     case 'setBody':
+    case 'appendBody':
       return { type, value: '', encoding: 'text' }
     case 'replaceBodyText':
       return { type, search: '', replace: '', replaceAll: false }

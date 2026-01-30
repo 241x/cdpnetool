@@ -203,6 +203,7 @@ const (
 	ActionSetHeader       ActionType = "setHeader"       // 设置头部
 	ActionRemoveHeader    ActionType = "removeHeader"    // 移除头部
 	ActionSetBody         ActionType = "setBody"         // 替换 Body
+	ActionAppendBody      ActionType = "appendBody"      // 追加 Body
 	ActionReplaceBodyText ActionType = "replaceBodyText" // 字符串替换 Body
 	ActionPatchBodyJson   ActionType = "patchBodyJson"   // JSON Patch 修改 Body
 
@@ -258,7 +259,7 @@ func (a *Action) IsValidForStage(stage Stage) bool {
 	case ActionSetStatus:
 		return stage == StageResponse
 	// 两阶段通用
-	case ActionSetHeader, ActionRemoveHeader, ActionSetBody, ActionReplaceBodyText, ActionPatchBodyJson:
+	case ActionSetHeader, ActionRemoveHeader, ActionSetBody, ActionAppendBody, ActionReplaceBodyText, ActionPatchBodyJson:
 		return true
 	default:
 		return false

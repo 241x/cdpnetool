@@ -110,12 +110,22 @@ func (i *Interceptor) dispatchPaused(client *cdp.Client, ctx context.Context, ev
 	}
 }
 
-// degradeAndContinue 降级处理：直接放行请求
+// degradeAndContinue 降级处理：直接放行
 func (i *Interceptor) degradeAndContinue(client *cdp.Client, ctx context.Context, ev *fetch.RequestPausedReply, reason string) {
 	i.log.Warn("执行降级策略：直接放行", "reason", reason, "requestID", ev.RequestID)
 	ctx2, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
-	_ = client.Fetch.ContinueRequest(ctx2, &fetch.ContinueRequestArgs{RequestID: ev.RequestID})
+
+	var err error
+	if ev.ResponseStatusCode == nil {
+		err = client.Fetch.ContinueRequest(ctx2, &fetch.ContinueRequestArgs{RequestID: ev.RequestID})
+	} else {
+		err = client.Fetch.ContinueResponse(ctx2, &fetch.ContinueResponseArgs{RequestID: ev.RequestID})
+	}
+
+	if err != nil {
+		i.log.Warn("降级策略执行失败", "error", err, "requestID", ev.RequestID)
+	}
 }
 
 // SetPool 设置并发池

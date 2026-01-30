@@ -19,6 +19,7 @@ import (
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"gorm.io/gorm"
+	gl "gorm.io/gorm/logger"
 )
 
 // App 负责管理会话、浏览器、配置和事件，供前端调用。
@@ -56,7 +57,7 @@ func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
 	a.log.Info("应用启动")
 
-	gormLogger := db.NewLogger(a.log)
+	gormLogger := db.NewLogger(a.log).LogMode(gl.Info)
 	gdb, err := db.New(db.Options{
 		Name:   a.cfg.Sqlite.Db,
 		Prefix: a.cfg.Sqlite.Prefix,

@@ -15,11 +15,12 @@ import (
 
 // Manager 负责管理浏览器目标会话
 type Manager struct {
-	devtoolsURL    string
-	log            logger.Logger
-	mu             sync.RWMutex // 读写锁，支持并发读
-	targets        map[domain.TargetID]*Session
-	clientToTarget map[*cdp.Client]domain.TargetID
+	devtoolsURL     string
+	writeBufferSize int
+	log             logger.Logger
+	mu              sync.RWMutex // 读写锁，支持并发读
+	targets         map[domain.TargetID]*Session
+	clientToTarget  map[*cdp.Client]domain.TargetID
 }
 
 // Session 表示一个已附加的浏览器目标会话
@@ -37,10 +38,11 @@ func New(devtoolsURL string, log logger.Logger) *Manager {
 		log = logger.NewNop()
 	}
 	return &Manager{
-		devtoolsURL:    devtoolsURL,
-		log:            log,
-		targets:        make(map[domain.TargetID]*Session),
-		clientToTarget: make(map[*cdp.Client]domain.TargetID),
+		devtoolsURL:     devtoolsURL,
+		writeBufferSize: 16 * 1024 * 1024,
+		log:             log,
+		targets:         make(map[domain.TargetID]*Session),
+		clientToTarget:  make(map[*cdp.Client]domain.TargetID),
 	}
 }
 
@@ -73,7 +75,9 @@ func (m *Manager) AttachTarget(ctx context.Context, target domain.TargetID) (*Se
 		return nil, fmt.Errorf("no target")
 	}
 
-	conn, err := rpcc.DialContext(sessionCtx, selected.WebSocketDebuggerURL)
+	conn, err := rpcc.DialContext(sessionCtx, selected.WebSocketDebuggerURL,
+		rpcc.WithWriteBufferSize(m.writeBufferSize),
+		rpcc.WithCompression())
 	if err != nil {
 		sessionCancel()
 		m.log.Err(err, "连接浏览器 DevTools 失败")

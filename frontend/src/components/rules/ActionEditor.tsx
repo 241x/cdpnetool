@@ -139,6 +139,7 @@ function renderActionFields(action: Action, onChange: (action: Action) => void) 
       )
 
     case 'setBody':
+    case 'appendBody':
       return (
         <div className="space-y-2">
           <div className="flex items-center gap-2">
@@ -155,7 +156,11 @@ function renderActionFields(action: Action, onChange: (action: Action) => void) 
           <Textarea
             value={(action.value as string) || ''}
             onChange={(e) => updateField('value', e.target.value)}
-            placeholder={action.encoding === 'base64' ? 'Base64 编码内容...' : 'Body 内容...'}
+            placeholder={
+              action.type === 'appendBody'
+                ? (action.encoding === 'base64' ? '追加的 Base64 编码内容...' : '追加的内容...')
+                : (action.encoding === 'base64' ? 'Base64 编码内容...' : 'Body 内容...')
+            }
             rows={4}
             className="font-mono text-sm"
           />
