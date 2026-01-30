@@ -214,6 +214,7 @@ func (h *Handler) HandleResponse(
 	l = l.With("traceID", pending.TraceID)
 	exec := executor.New(l, ev, executor.Options{
 		MaxCaptureSize: h.bodySizeThreshold,
+		ProcessTimeout: time.Duration(h.processTimeoutMS) * time.Millisecond,
 	})
 
 	// 获取响应体与熔断检查

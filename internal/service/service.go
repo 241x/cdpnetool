@@ -62,7 +62,7 @@ func (s *svc) StartSession(ctx context.Context, cfg domain.SessionConfig) (domai
 		cfg.BodySizeThreshold = 8 << 20
 	}
 	if cfg.ProcessTimeoutMS <= 0 {
-		cfg.ProcessTimeoutMS = 5000
+		cfg.ProcessTimeoutMS = 10000
 	}
 	if cfg.PendingCapacity <= 0 {
 		cfg.PendingCapacity = 1024
