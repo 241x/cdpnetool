@@ -40,9 +40,6 @@ type Service interface {
 
 	// SubscribeEvents 订阅事件
 	SubscribeEvents(ctx context.Context, id domain.SessionID) (<-chan domain.NetworkEvent, error)
-
-	// SetCollectionMode 设置是否采集未匹配的请求
-	SetCollectionMode(ctx context.Context, id domain.SessionID, enabled bool) error
 }
 
 // NewService 创建并返回服务接口实现

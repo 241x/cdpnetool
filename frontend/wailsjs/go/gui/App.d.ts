@@ -58,8 +58,6 @@ export function SaveConfig(arg1:number,arg2:string):Promise<api.Response_cdpneto
 
 export function SetActiveConfig(arg1:number):Promise<api.Response_cdpnetool_pkg_api_EmptyData_>;
 
-export function SetCollectionMode(arg1:string,arg2:boolean):Promise<api.Response_cdpnetool_pkg_api_EmptyData_>;
-
 export function SetDirty(arg1:boolean):Promise<void>;
 
 export function SetMultipleSettings(arg1:string):Promise<api.Response_cdpnetool_pkg_api_EmptyData_>;

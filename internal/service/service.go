@@ -82,7 +82,6 @@ func (s *svc) StartSession(ctx context.Context, cfg domain.SessionConfig) (domai
 		ProcessTimeoutMS:  cfg.ProcessTimeoutMS,
 		BodySizeThreshold: cfg.BodySizeThreshold,
 		Logger:            s.log,
-		CollectUnmatched:  true, // 默认开启收集未匹配请求
 	})
 
 	// 拦截器回调
@@ -377,19 +376,4 @@ func (s *svc) SubscribeEvents(ctx context.Context, id domain.SessionID) (<-chan 
 		return nil, domain.ErrSessionNotFound
 	}
 	return ses.events, nil
-}
-
-// SetCollectionMode 设置是否采集未匹配的请求
-func (s *svc) SetCollectionMode(ctx context.Context, id domain.SessionID, enabled bool) error {
-	s.mu.Lock()
-	ses, ok := s.sessions[id]
-	s.mu.Unlock()
-	if !ok {
-		return domain.ErrSessionNotFound
-	}
-	if ses.h != nil {
-		ses.h.SetCollectUnmatched(enabled)
-	}
-	s.log.Info("更新采集模式", "session", string(id), "enabled", enabled)
-	return nil
 }

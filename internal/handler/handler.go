@@ -23,7 +23,6 @@ type Handler struct {
 	processTimeoutMS  int
 	bodySizeThreshold int64 // 允许采集和修改响应体的最大限制
 	log               logger.Logger
-	collectUnmatched  bool     // 是否收集未匹配的请求
 	pendingPool       sync.Map // 在途请求池: map[RequestID]*PendingRequest
 }
 
@@ -46,7 +45,6 @@ type Config struct {
 	ProcessTimeoutMS  int
 	BodySizeThreshold int64
 	Logger            logger.Logger
-	CollectUnmatched  bool
 }
 
 // New 创建事件处理器并启动清理协程
@@ -57,16 +55,10 @@ func New(cfg Config) *Handler {
 		processTimeoutMS:  cfg.ProcessTimeoutMS,
 		bodySizeThreshold: cfg.BodySizeThreshold,
 		log:               cfg.Logger,
-		collectUnmatched:  cfg.CollectUnmatched,
 	}
 
 	go h.cleanupLoop()
 	return h
-}
-
-// SetCollectUnmatched 动态设置是否收集未匹配请求
-func (h *Handler) SetCollectUnmatched(collect bool) {
-	h.collectUnmatched = collect
 }
 
 // SetEngine 设置规则引擎
@@ -108,9 +100,6 @@ func (h *Handler) HandleRequest(
 ) {
 	evalCtx := executor.ToEvalContext(ev)
 	if h.engine == nil {
-		if h.collectUnmatched {
-			h.saveUnmatchedToPool(ev, traceID)
-		}
 		h.safeContinueRequest(ctx, client, ev.RequestID)
 		return
 	}
@@ -130,9 +119,6 @@ func (h *Handler) HandleRequest(
 	ruleMatches := buildRuleMatches(allMatchedRules)
 
 	if !isMatched {
-		if h.collectUnmatched {
-			h.saveUnmatchedToPool(ev, traceID)
-		}
 		h.safeContinueRequest(ctx, client, ev.RequestID)
 		return
 	}
@@ -236,31 +222,27 @@ func (h *Handler) HandleResponse(
 	var finalResult string = "passed"
 	var res *executor.ExecutionResult
 
-	if pending.IsMatched {
-		res = exec.ExecuteResponse(pending.RawMatchedRules, originalBody)
+	res = exec.ExecuteResponse(pending.RawMatchedRules, originalBody)
 
-		if res.FulfillArgs != nil {
-			if err := client.Fetch.FulfillRequest(ctx, res.FulfillArgs); err != nil {
-				l.Err(err, "执行 FulfillRequest (Modified Response) 失败，尝试保底继续")
-				h.safeContinueResponse(ctx, client, ev.RequestID)
-			}
-			finalResult = "modified"
-		} else if res.ContinueRes != nil {
-			if err := client.Fetch.ContinueResponse(ctx, res.ContinueRes); err != nil {
-				l.Err(err, "执行 ContinueResponse (Modified Response) 失败，尝试保底继续")
-				h.safeContinueResponse(ctx, client, ev.RequestID)
-			}
-			finalResult = "modified"
-		} else {
+	if res.FulfillArgs != nil {
+		if err := client.Fetch.FulfillRequest(ctx, res.FulfillArgs); err != nil {
+			l.Err(err, "执行 FulfillRequest (Modified Response) 失败，尝试保底继续")
 			h.safeContinueResponse(ctx, client, ev.RequestID)
-			if pending.RequestModified {
-				finalResult = "modified"
-			} else {
-				finalResult = "matched"
-			}
 		}
+		finalResult = "modified"
+	} else if res.ContinueRes != nil {
+		if err := client.Fetch.ContinueResponse(ctx, res.ContinueRes); err != nil {
+			l.Err(err, "执行 ContinueResponse (Modified Response) 失败，尝试保底继续")
+			h.safeContinueResponse(ctx, client, ev.RequestID)
+		}
+		finalResult = "modified"
 	} else {
 		h.safeContinueResponse(ctx, client, ev.RequestID)
+		if pending.RequestModified {
+			finalResult = "modified"
+		} else {
+			finalResult = "matched"
+		}
 	}
 
 	// 发送全周期审计事件
@@ -302,18 +284,6 @@ func (h *Handler) sendMatchedEvent(
 	case h.events <- evt:
 	default:
 	}
-}
-
-// saveUnmatchedToPool 快速保存未匹配的请求信息到池
-func (h *Handler) saveUnmatchedToPool(ev *fetch.RequestPausedReply, traceID string) {
-	// 临时创建一个执行器来捕获快照，不带动作执行
-	exec := executor.New(h.log, ev, executor.Options{})
-	h.pendingPool.Store(ev.RequestID, &PendingRequest{
-		TraceID:     traceID,
-		StartTime:   time.Now(),
-		RequestInfo: exec.CaptureRequestSnapshot(),
-		IsMatched:   false,
-	})
 }
 
 // buildRuleMatches 构建规则匹配信息列表

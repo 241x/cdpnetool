@@ -60,7 +60,6 @@ declare global {
           DisableInterception: (id: string) => Promise<ApiResponse<EmptyData>>
           LoadRules: (id: string, json: string) => Promise<ApiResponse<EmptyData>>
           GetRuleStats: (id: string) => Promise<ApiResponse<{ stats: any }>>
-          SetCollectionMode: (id: string, enabled: boolean) => Promise<ApiResponse<EmptyData>>
           ApproveRequest: (itemId: string, mutationsJson: string) => Promise<ApiResponse<EmptyData>>
           ApproveResponse: (itemId: string, mutationsJson: string) => Promise<ApiResponse<EmptyData>>
           Reject: (itemId: string) => Promise<ApiResponse<EmptyData>>
@@ -102,10 +101,8 @@ function App() {
     attachedTargetId,
     setAttachedTargetId,
     matchedEvents,
-    unmatchedEvents,
     addInterceptEvent,
     clearMatchedEvents,
-    clearUnmatchedEvents,
     resetSession,
   } = useSessionStore()
   
@@ -411,9 +408,7 @@ function App() {
             <div className="h-full overflow-auto p-4">
               <EventsPanel 
                 matchedEvents={matchedEvents} 
-                unmatchedEvents={unmatchedEvents}
                 onClearMatched={clearMatchedEvents}
-                onClearUnmatched={clearUnmatchedEvents}
               />
             </div>
           </TabsContent>

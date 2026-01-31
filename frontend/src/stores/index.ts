@@ -1,8 +1,7 @@
 import { create } from 'zustand'
 import type { 
   NetworkEvent,
-  MatchedEventWithId, 
-  UnmatchedEventWithId 
+  MatchedEventWithId 
 } from '@/types/events'
 
 // 类型定义
@@ -25,7 +24,6 @@ interface SessionState {
   targets: TargetInfo[]
   attachedTargetId: string | null
   matchedEvents: MatchedEventWithId[]    // 匹配的事件（会存入数据库）
-  unmatchedEvents: UnmatchedEventWithId[] // 未匹配的事件（仅内存）
   
   // Actions
   setDevToolsURL: (url: string) => void
@@ -40,7 +38,6 @@ interface SessionState {
   // 事件操作
   addInterceptEvent: (event: NetworkEvent) => void
   clearMatchedEvents: () => void
-  clearUnmatchedEvents: () => void
   clearAllEvents: () => void
 }
 
@@ -58,7 +55,6 @@ export const useSessionStore = create<SessionState>((set) => ({
   targets: [],
   attachedTargetId: null,
   matchedEvents: [],
-  unmatchedEvents: [],
   
   setDevToolsURL: (url) => set({ devToolsURL: url }),
   setCurrentSession: (id) => set({ currentSessionId: id }),
@@ -75,12 +71,11 @@ export const useSessionStore = create<SessionState>((set) => ({
     targets: [],
   }),
   
-  // 添加事件（根据 isMatched 分开存储）
+  // 添加事件
   addInterceptEvent: (event) => set((state) => {
     console.log('[Store] 处理拦截事件:', event)
     
-    // 后端现在直接发送 NetworkEvent 扁平对象
-    // 我们根据 isMatched 字段进行分发，并为 UI 组件构造预期的嵌套结构
+    // 后端现在只发送匹配成功的 NetworkEvent
     if (event.isMatched) {
       const eventWithId: MatchedEventWithId = {
         networkEvent: event,
@@ -89,20 +84,12 @@ export const useSessionStore = create<SessionState>((set) => ({
       return {
         matchedEvents: [eventWithId, ...state.matchedEvents].slice(0, 200)
       }
-    } else {
-      const eventWithId: UnmatchedEventWithId = {
-        networkEvent: event,
-        id: generateEventId(event.timestamp),
-      }
-      return {
-        unmatchedEvents: [eventWithId, ...state.unmatchedEvents].slice(0, 100)
-      }
     }
+    return state
   }),
   
   clearMatchedEvents: () => set({ matchedEvents: [] }),
-  clearUnmatchedEvents: () => set({ unmatchedEvents: [] }),
-  clearAllEvents: () => set({ matchedEvents: [], unmatchedEvents: [] }),
+  clearAllEvents: () => set({ matchedEvents: [] }),
 }))
 
 // 主题状态

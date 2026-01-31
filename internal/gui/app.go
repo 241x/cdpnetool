@@ -303,16 +303,6 @@ func (a *App) LoadRules(sessionID string, rulesJSON string) api.Response[api.Emp
 	return api.OK(api.EmptyData{})
 }
 
-// SetCollectionMode 设置是否捕获未匹配的请求
-func (a *App) SetCollectionMode(sessionID string, enabled bool) api.Response[api.EmptyData] {
-	err := a.service.SetCollectionMode(a.ctx, domain.SessionID(sessionID), enabled)
-	if err != nil {
-		code, msg := a.translateError(err)
-		return api.Fail[api.EmptyData](code, msg)
-	}
-	return api.OK(api.EmptyData{})
-}
-
 // GetRuleStats 获取指定会话的规则命中统计信息。
 func (a *App) GetRuleStats(sessionID string) api.Response[StatsData] {
 	stats, err := a.service.GetRuleStats(a.ctx, domain.SessionID(sessionID))

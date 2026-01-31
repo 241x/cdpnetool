@@ -12,70 +12,43 @@ import {
   ChevronUp,
   Trash2,
   Filter,
-  CheckCircle,
-  XCircle
+  CheckCircle
 } from 'lucide-react'
 import type { 
   MatchedEventWithId, 
-  UnmatchedEventWithId, 
   FinalResultType 
 } from '@/types/events'
 import { 
   FINAL_RESULT_LABELS, 
-  FINAL_RESULT_COLORS, 
-  UNMATCHED_COLORS 
+  FINAL_RESULT_COLORS 
 } from '@/types/events'
 
 interface EventsPanelProps {
   matchedEvents: MatchedEventWithId[]
-  unmatchedEvents: UnmatchedEventWithId[]
   onClearMatched?: () => void
-  onClearUnmatched?: () => void
 }
 
 export function EventsPanel({ 
   matchedEvents, 
-  unmatchedEvents, 
   onClearMatched, 
-  onClearUnmatched 
 }: EventsPanelProps) {
-  const [activeTab, setActiveTab] = useState<'matched' | 'unmatched'>('matched')
-
   const totalMatched = matchedEvents.length
-  const totalUnmatched = unmatchedEvents.length
 
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between mb-2">
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'matched' | 'unmatched')} className="flex-1">
-          <TabsList className="w-fit">
-            <TabsTrigger value="matched" className="gap-2">
-              <CheckCircle className="w-4 h-4" />
-              匹配请求
-              {totalMatched > 0 && (
-                <Badge variant="secondary" className="ml-1 text-xs">{totalMatched}</Badge>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="unmatched" className="gap-2">
-              <XCircle className="w-4 h-4" />
-              未匹配请求
-              {totalUnmatched > 0 && (
-                <Badge variant="secondary" className="ml-1 text-xs">{totalUnmatched}</Badge>
-              )}
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+        <div className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium">
+          <CheckCircle className="w-4 h-4 text-primary" />
+          匹配请求
+          {totalMatched > 0 && (
+            <Badge variant="secondary" className="ml-1 text-xs">{totalMatched}</Badge>
+          )}
+        </div>
       </div>
 
-      <Tabs value={activeTab} className="flex-1 flex flex-col overflow-hidden">
-        <TabsContent value="matched" className="flex-1 m-0 overflow-hidden">
-          <MatchedEventsList events={matchedEvents} onClear={onClearMatched} />
-        </TabsContent>
-
-        <TabsContent value="unmatched" className="flex-1 m-0 overflow-hidden">
-          <UnmatchedEventsList events={unmatchedEvents} onClear={onClearUnmatched} />
-        </TabsContent>
-      </Tabs>
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <MatchedEventsList events={matchedEvents} onClear={onClearMatched} />
+      </div>
     </div>
   )
 }
@@ -193,87 +166,8 @@ function MatchedEventsList({ events, onClear }: MatchedEventsListProps) {
   )
 }
 
-interface UnmatchedEventsListProps {
-  events: UnmatchedEventWithId[]
-  onClear?: () => void
-}
-
-// 未匹配事件列表
-function UnmatchedEventsList({ events, onClear }: UnmatchedEventsListProps) {
-  const [search, setSearch] = useState('')
-  const [expandedEvent, setExpandedEvent] = useState<string | null>(null)
-
-  const filteredEvents = useMemo(() => {
-    if (!search) return events
-    const searchLower = search.toLowerCase()
-    return events.filter(evt => 
-      evt.networkEvent.request.url.toLowerCase().includes(searchLower) ||
-      evt.networkEvent.request.method.toLowerCase().includes(searchLower)
-    )
-  }, [events, search])
-
-  if (events.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-        <div className="text-4xl mb-4 opacity-50">📡</div>
-        <p>暂无未匹配请求</p>
-        <p className="text-sm mt-1">未匹配任何规则的请求将在此显示</p>
-      </div>
-    )
-  }
-
-  return (
-    <div className="h-full flex flex-col">
-      {/* 工具栏 */}
-      <div className="flex items-center gap-2 mb-4">
-        <div className="relative flex-1 max-w-xs">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="搜索 URL、方法..."
-            className="pl-9 pr-8"
-          />
-          {search && (
-            <button 
-              onClick={() => setSearch('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          )}
-        </div>
-
-        {onClear && (
-          <Button variant="outline" size="sm" onClick={onClear}>
-            <Trash2 className="w-4 h-4 mr-1" />
-            清除
-          </Button>
-        )}
-      </div>
-
-      <div className="text-sm text-muted-foreground mb-3">
-        共 {filteredEvents.length} 条 {search && '（搜索结果）'}
-      </div>
-
-      <ScrollArea className="flex-1">
-        <div className="space-y-2 pr-4">
-          {filteredEvents.map((evt) => (
-            <UnmatchedEventItem
-              key={evt.id}
-              event={evt}
-              isExpanded={expandedEvent === evt.id}
-              onToggleExpand={() => setExpandedEvent(expandedEvent === evt.id ? null : evt.id)}
-            />
-          ))}
-        </div>
-      </ScrollArea>
-    </div>
-  )
-}
-
 // 事件详情视图（参考 Chrome DevTools 布局）
-function EventDetailView({ event }: { event: MatchedEventWithId | UnmatchedEventWithId }) {
+function EventDetailView({ event }: { event: MatchedEventWithId }) {
   const { networkEvent } = event
   const { request, response, matchedRules, finalResult } = networkEvent
 
@@ -549,69 +443,6 @@ function MatchedEventItem({ event, isExpanded, onToggleExpand }: MatchedEventIte
         <Badge variant="secondary" className="text-xs">
           {event.networkEvent.matchedRules?.length || 0} 规则
         </Badge>
-
-        {/* 时间 */}
-        <span className="text-xs text-muted-foreground shrink-0">
-          {formatTime(event.networkEvent.timestamp)}
-        </span>
-
-        {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-      </div>
-
-      {/* 展开详情 */}
-      {isExpanded && <EventDetailView event={event} />}
-    </div>
-  )
-}
-
-interface UnmatchedEventItemProps {
-  event: UnmatchedEventWithId
-  isExpanded: boolean
-  onToggleExpand: () => void
-}
-
-// 未匹配事件项
-function UnmatchedEventItem({ event, isExpanded, onToggleExpand }: UnmatchedEventItemProps) {
-  const formatTime = (ts: number) => {
-    return new Date(ts).toLocaleTimeString('zh-CN', { 
-      hour: '2-digit', 
-      minute: '2-digit', 
-      second: '2-digit',
-      hour12: false 
-    })
-  }
-
-  return (
-    <div className="border rounded-lg bg-card overflow-hidden">
-      {/* 头部 */}
-      <div 
-        className="flex items-center gap-2 p-2.5 cursor-pointer hover:bg-muted/50 transition-colors"
-        onClick={onToggleExpand}
-      >
-        {/* 未匹配标签 */}
-        <Badge variant="outline" className={`${UNMATCHED_COLORS.bg} ${UNMATCHED_COLORS.text} border-0 text-xs`}>
-          未匹配
-        </Badge>
-
-        {/* Method */}
-        <span className="font-mono text-xs font-medium px-1.5 py-0.5 rounded bg-muted">
-          {event.networkEvent.request.method}
-        </span>
-
-        {/* URL */}
-        <span className="flex-1 text-sm truncate text-muted-foreground font-mono">
-          {event.networkEvent.request.url}
-        </span>
-
-        {/* Status Code (如果有) */}
-        {event.networkEvent.response?.statusCode && (
-          <span className={`font-mono text-xs ${
-            event.networkEvent.response.statusCode >= 400 ? 'text-red-500' : 
-            event.networkEvent.response.statusCode >= 300 ? 'text-yellow-500' : 'text-green-500'
-          }`}>
-            {event.networkEvent.response.statusCode}
-          </span>
-        )}
 
         {/* 时间 */}
         <span className="text-xs text-muted-foreground shrink-0">
