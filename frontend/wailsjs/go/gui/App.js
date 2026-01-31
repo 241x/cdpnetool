@@ -133,7 +133,3 @@ export function StartSession(arg1) {
 export function StopSession(arg1) {
   return window['go']['gui']['App']['StopSession'](arg1);
 }
-
-export function TranslateError(arg1) {
-  return window['go']['gui']['App']['TranslateError'](arg1);
-}

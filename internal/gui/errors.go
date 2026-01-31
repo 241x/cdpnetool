@@ -10,24 +10,18 @@ import (
 
 // 错误码常量
 const (
-	CodeSessionNotFound    = "SESSION_NOT_FOUND"
-	CodeSessionStartFailed = "SESSION_START_FAILED"
-
-	CodeNoTargetAttached = "NO_TARGET_ATTACHED"
-	CodeTargetNotFound   = "TARGET_NOT_FOUND"
-
+	CodeSessionNotFound     = "SESSION_NOT_FOUND"
+	CodeSessionStartFailed  = "SESSION_START_FAILED"
+	CodeNoTargetAttached    = "NO_TARGET_ATTACHED"
+	CodeTargetNotFound      = "TARGET_NOT_FOUND"
 	CodeDevToolsUnreachable = "DEVTOOLS_UNREACHABLE"
 	CodeNetworkError        = "NETWORK_ERROR"
-
-	CodeInvalidConfig  = "INVALID_CONFIG"
-	CodeConfigNotFound = "CONFIG_NOT_FOUND"
-
-	CodeBrowserNotRunning  = "BROWSER_NOT_RUNNING"
-	CodeBrowserStartFailed = "BROWSER_START_FAILED"
-
-	CodeDatabaseError = "DATABASE_ERROR"
-
-	CodeUnknown = "UNKNOWN_ERROR"
+	CodeInvalidConfig       = "INVALID_CONFIG"
+	CodeConfigNotFound      = "CONFIG_NOT_FOUND"
+	CodeBrowserNotRunning   = "BROWSER_NOT_RUNNING"
+	CodeBrowserStartFailed  = "BROWSER_START_FAILED"
+	CodeDatabaseError       = "DATABASE_ERROR"
+	CodeUnknown             = "UNKNOWN_ERROR"
 )
 
 // 错误映射表
@@ -69,8 +63,8 @@ var errorMappings = map[error]struct {
 	},
 }
 
-// TranslateError 将领域错误转换为用户友好的错误码和消息
-func (a *App) TranslateError(err error) (code, message string) {
+// translateError 将领域错误转换为用户友好的错误码和消息
+func (a *App) translateError(err error) (code, message string) {
 	if err == nil {
 		return "", ""
 	}

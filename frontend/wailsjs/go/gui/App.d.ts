@@ -67,5 +67,3 @@ export function SetSetting(arg1:string,arg2:string):Promise<api.Response_cdpneto
 export function StartSession(arg1:string):Promise<api.Response_cdpnetool_internal_gui_SessionData_>;
 
 export function StopSession(arg1:string):Promise<api.Response_cdpnetool_pkg_api_EmptyData_>;
-
-export function TranslateError(arg1:Error):Promise<string|string>;

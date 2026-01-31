@@ -127,7 +127,7 @@ func (a *App) StartSession(devToolsURL string) api.Response[SessionData] {
 	cfg := domain.SessionConfig{DevToolsURL: devToolsURL}
 	sid, err := a.service.StartSession(a.ctx, cfg)
 	if err != nil {
-		code, msg := a.TranslateError(err)
+		code, msg := a.translateError(err)
 		return api.Fail[SessionData](code, msg)
 	}
 
@@ -154,7 +154,7 @@ func (a *App) StopSession(sessionID string) api.Response[api.EmptyData] {
 
 	err := a.service.StopSession(a.ctx, domain.SessionID(sessionID))
 	if err != nil {
-		code, msg := a.TranslateError(err)
+		code, msg := a.translateError(err)
 		return api.Fail[api.EmptyData](code, msg)
 	}
 
@@ -174,7 +174,7 @@ func (a *App) GetCurrentSession() api.Response[SessionData] {
 func (a *App) ListTargets(sessionID string) api.Response[TargetListData] {
 	targets, err := a.service.ListTargets(a.ctx, domain.SessionID(sessionID))
 	if err != nil {
-		code, msg := a.TranslateError(err)
+		code, msg := a.translateError(err)
 		return api.Fail[TargetListData](code, msg)
 	}
 
@@ -185,7 +185,7 @@ func (a *App) ListTargets(sessionID string) api.Response[TargetListData] {
 func (a *App) AttachTarget(sessionID, targetID string) api.Response[api.EmptyData] {
 	err := a.service.AttachTarget(a.ctx, domain.SessionID(sessionID), domain.TargetID(targetID))
 	if err != nil {
-		code, msg := a.TranslateError(err)
+		code, msg := a.translateError(err)
 		return api.Fail[api.EmptyData](code, msg)
 	}
 
@@ -197,7 +197,7 @@ func (a *App) AttachTarget(sessionID, targetID string) api.Response[api.EmptyDat
 func (a *App) DetachTarget(sessionID, targetID string) api.Response[api.EmptyData] {
 	err := a.service.DetachTarget(a.ctx, domain.SessionID(sessionID), domain.TargetID(targetID))
 	if err != nil {
-		code, msg := a.TranslateError(err)
+		code, msg := a.translateError(err)
 		return api.Fail[api.EmptyData](code, msg)
 	}
 
@@ -244,7 +244,7 @@ func (a *App) ExportConfig(name, rulesJSON string) api.Response[api.EmptyData] {
 	})
 
 	if err != nil {
-		code, msg := a.TranslateError(err)
+		code, msg := a.translateError(err)
 		return api.Fail[api.EmptyData](code, msg)
 	}
 
@@ -254,7 +254,7 @@ func (a *App) ExportConfig(name, rulesJSON string) api.Response[api.EmptyData] {
 
 	err = os.WriteFile(path, []byte(rulesJSON), 0644)
 	if err != nil {
-		code, msg := a.TranslateError(err)
+		code, msg := a.translateError(err)
 		return api.Fail[api.EmptyData](code, msg)
 	}
 
@@ -265,7 +265,7 @@ func (a *App) ExportConfig(name, rulesJSON string) api.Response[api.EmptyData] {
 func (a *App) EnableInterception(sessionID string) api.Response[api.EmptyData] {
 	err := a.service.EnableInterception(a.ctx, domain.SessionID(sessionID))
 	if err != nil {
-		code, msg := a.TranslateError(err)
+		code, msg := a.translateError(err)
 		return api.Fail[api.EmptyData](code, msg)
 	}
 
@@ -277,7 +277,7 @@ func (a *App) EnableInterception(sessionID string) api.Response[api.EmptyData] {
 func (a *App) DisableInterception(sessionID string) api.Response[api.EmptyData] {
 	err := a.service.DisableInterception(a.ctx, domain.SessionID(sessionID))
 	if err != nil {
-		code, msg := a.TranslateError(err)
+		code, msg := a.translateError(err)
 		return api.Fail[api.EmptyData](code, msg)
 	}
 
@@ -289,13 +289,13 @@ func (a *App) DisableInterception(sessionID string) api.Response[api.EmptyData] 
 func (a *App) LoadRules(sessionID string, rulesJSON string) api.Response[api.EmptyData] {
 	var cfg rulespec.Config
 	if err := json.Unmarshal([]byte(rulesJSON), &cfg); err != nil {
-		code, msg := a.TranslateError(err)
+		code, msg := a.translateError(err)
 		return api.Fail[api.EmptyData](code, msg)
 	}
 
 	err := a.service.LoadRules(a.ctx, domain.SessionID(sessionID), &cfg)
 	if err != nil {
-		code, msg := a.TranslateError(err)
+		code, msg := a.translateError(err)
 		return api.Fail[api.EmptyData](code, msg)
 	}
 
@@ -307,7 +307,7 @@ func (a *App) LoadRules(sessionID string, rulesJSON string) api.Response[api.Emp
 func (a *App) SetCollectionMode(sessionID string, enabled bool) api.Response[api.EmptyData] {
 	err := a.service.SetCollectionMode(a.ctx, domain.SessionID(sessionID), enabled)
 	if err != nil {
-		code, msg := a.TranslateError(err)
+		code, msg := a.translateError(err)
 		return api.Fail[api.EmptyData](code, msg)
 	}
 	return api.OK(api.EmptyData{})
@@ -317,7 +317,7 @@ func (a *App) SetCollectionMode(sessionID string, enabled bool) api.Response[api
 func (a *App) GetRuleStats(sessionID string) api.Response[StatsData] {
 	stats, err := a.service.GetRuleStats(a.ctx, domain.SessionID(sessionID))
 	if err != nil {
-		code, msg := a.TranslateError(err)
+		code, msg := a.translateError(err)
 		return api.Fail[StatsData](code, msg)
 	}
 
@@ -376,7 +376,7 @@ func (a *App) LaunchBrowser(headless bool) api.Response[BrowserData] {
 
 	b, err := browser.Start(a.ctx, opts)
 	if err != nil {
-		code, msg := a.TranslateError(err)
+		code, msg := a.translateError(err)
 		return api.Fail[BrowserData](code, msg)
 	}
 
@@ -388,14 +388,14 @@ func (a *App) LaunchBrowser(headless bool) api.Response[BrowserData] {
 // CloseBrowser 关闭已启动的浏览器实例。
 func (a *App) CloseBrowser() api.Response[api.EmptyData] {
 	if a.browser == nil {
-		code, msg := a.TranslateError(domain.ErrBrowserNotRunning)
+		code, msg := a.translateError(domain.ErrBrowserNotRunning)
 		return api.Fail[api.EmptyData](code, msg)
 	}
 
 	err := a.browser.Stop(2 * time.Second)
 	a.browser = nil
 	if err != nil {
-		code, msg := a.TranslateError(err)
+		code, msg := a.translateError(err)
 		return api.Fail[api.EmptyData](code, msg)
 	}
 
@@ -416,7 +416,7 @@ func (a *App) GetBrowserStatus() api.Response[BrowserData] {
 func (a *App) GetAllSettings() api.Response[SettingsData] {
 	settings, err := a.settingsRepo.GetAll(a.ctx)
 	if err != nil {
-		code, msg := a.TranslateError(err)
+		code, msg := a.translateError(err)
 		return api.Fail[SettingsData](code, msg)
 	}
 
@@ -432,7 +432,7 @@ func (a *App) GetSetting(key string) api.Response[SettingData] {
 // SetSetting 设置单个配置项的值。
 func (a *App) SetSetting(key, value string) api.Response[api.EmptyData] {
 	if err := a.settingsRepo.Set(a.ctx, key, value); err != nil {
-		code, msg := a.TranslateError(err)
+		code, msg := a.translateError(err)
 		return api.Fail[api.EmptyData](code, msg)
 	}
 
@@ -443,12 +443,12 @@ func (a *App) SetSetting(key, value string) api.Response[api.EmptyData] {
 func (a *App) SetMultipleSettings(settingsJSON string) api.Response[api.EmptyData] {
 	var settings map[string]string
 	if err := json.Unmarshal([]byte(settingsJSON), &settings); err != nil {
-		code, msg := a.TranslateError(err)
+		code, msg := a.translateError(err)
 		return api.Fail[api.EmptyData](code, msg)
 	}
 
 	if err := a.settingsRepo.SetMultiple(a.ctx, settings); err != nil {
-		code, msg := a.TranslateError(err)
+		code, msg := a.translateError(err)
 		return api.Fail[api.EmptyData](code, msg)
 	}
 
@@ -459,7 +459,7 @@ func (a *App) SetMultipleSettings(settingsJSON string) api.Response[api.EmptyDat
 func (a *App) ListConfigs() api.Response[ConfigListData] {
 	configs, err := a.configRepo.List(a.ctx)
 	if err != nil {
-		code, msg := a.TranslateError(err)
+		code, msg := a.translateError(err)
 		return api.Fail[ConfigListData](code, msg)
 	}
 
@@ -470,7 +470,7 @@ func (a *App) ListConfigs() api.Response[ConfigListData] {
 func (a *App) GetConfig(id uint) api.Response[ConfigData] {
 	config, err := a.configRepo.FindOne(a.ctx, id)
 	if err != nil {
-		code, msg := a.TranslateError(err)
+		code, msg := a.translateError(err)
 		return api.Fail[ConfigData](code, msg)
 	}
 
@@ -483,13 +483,13 @@ func (a *App) CreateNewConfig(name string) api.Response[NewConfigData] {
 
 	config, err := a.configRepo.Create(a.ctx, cfg)
 	if err != nil {
-		code, msg := a.TranslateError(err)
+		code, msg := a.translateError(err)
 		return api.Fail[NewConfigData](code, msg)
 	}
 
 	configJSON, err := json.Marshal(cfg)
 	if err != nil {
-		code, msg := a.TranslateError(err)
+		code, msg := a.translateError(err)
 		return api.Fail[NewConfigData](code, msg)
 	}
 
@@ -502,7 +502,7 @@ func (a *App) GenerateNewRule(name string, existingCount int) api.Response[NewRu
 	rule := rulespec.NewRule(name, existingCount)
 	ruleJSON, err := json.Marshal(rule)
 	if err != nil {
-		code, msg := a.TranslateError(err)
+		code, msg := a.translateError(err)
 		return api.Fail[NewRuleData](code, msg)
 	}
 
@@ -513,13 +513,13 @@ func (a *App) GenerateNewRule(name string, existingCount int) api.Response[NewRu
 func (a *App) SaveConfig(dbID uint, configJSON string) api.Response[ConfigData] {
 	var cfg rulespec.Config
 	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
-		code, msg := a.TranslateError(err)
+		code, msg := a.translateError(err)
 		return api.Fail[ConfigData](code, msg)
 	}
 
 	config, err := a.configRepo.Save(a.ctx, dbID, &cfg)
 	if err != nil {
-		code, msg := a.TranslateError(err)
+		code, msg := a.translateError(err)
 		return api.Fail[ConfigData](code, msg)
 	}
 
@@ -530,7 +530,7 @@ func (a *App) SaveConfig(dbID uint, configJSON string) api.Response[ConfigData] 
 // DeleteConfig 删除指定 ID 的配置。
 func (a *App) DeleteConfig(id uint) api.Response[api.EmptyData] {
 	if err := a.configRepo.Delete(a.ctx, id); err != nil {
-		code, msg := a.TranslateError(err)
+		code, msg := a.translateError(err)
 		return api.Fail[api.EmptyData](code, msg)
 	}
 
@@ -541,7 +541,7 @@ func (a *App) DeleteConfig(id uint) api.Response[api.EmptyData] {
 // SetActiveConfig 设置指定配置为当前激活状态。
 func (a *App) SetActiveConfig(id uint) api.Response[api.EmptyData] {
 	if err := a.configRepo.SetActive(a.ctx, id); err != nil {
-		code, msg := a.TranslateError(err)
+		code, msg := a.translateError(err)
 		return api.Fail[api.EmptyData](code, msg)
 	}
 
@@ -557,7 +557,7 @@ func (a *App) SetActiveConfig(id uint) api.Response[api.EmptyData] {
 func (a *App) GetActiveConfig() api.Response[ConfigData] {
 	config, err := a.configRepo.GetActive(a.ctx)
 	if err != nil {
-		code, msg := a.TranslateError(err)
+		code, msg := a.translateError(err)
 		return api.Fail[ConfigData](code, msg)
 	}
 
@@ -567,7 +567,7 @@ func (a *App) GetActiveConfig() api.Response[ConfigData] {
 // RenameConfig 重命名指定的配置。
 func (a *App) RenameConfig(id uint, newName string) api.Response[api.EmptyData] {
 	if err := a.configRepo.Rename(a.ctx, id, newName); err != nil {
-		code, msg := a.TranslateError(err)
+		code, msg := a.translateError(err)
 		return api.Fail[api.EmptyData](code, msg)
 	}
 
@@ -579,13 +579,13 @@ func (a *App) RenameConfig(id uint, newName string) api.Response[api.EmptyData] 
 func (a *App) ImportConfig(configJSON string) api.Response[ConfigData] {
 	var cfg rulespec.Config
 	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
-		code, msg := a.TranslateError(err)
+		code, msg := a.translateError(err)
 		return api.Fail[ConfigData](code, msg)
 	}
 
 	config, err := a.configRepo.Upsert(a.ctx, &cfg)
 	if err != nil {
-		code, msg := a.TranslateError(err)
+		code, msg := a.translateError(err)
 		return api.Fail[ConfigData](code, msg)
 	}
 
@@ -596,28 +596,28 @@ func (a *App) ImportConfig(configJSON string) api.Response[ConfigData] {
 // LoadActiveConfigToSession 加载当前激活的配置到活跃会话。
 func (a *App) LoadActiveConfigToSession() api.Response[api.EmptyData] {
 	if a.currentSession == "" {
-		code, msg := a.TranslateError(domain.ErrSessionNotFound)
+		code, msg := a.translateError(domain.ErrSessionNotFound)
 		return api.Fail[api.EmptyData](code, msg)
 	}
 
 	config, err := a.configRepo.GetActive(a.ctx)
 	if err != nil {
-		code, msg := a.TranslateError(err)
+		code, msg := a.translateError(err)
 		return api.Fail[api.EmptyData](code, msg)
 	}
 	if config == nil {
-		code, msg := a.TranslateError(domain.ErrConfigNotFound)
+		code, msg := a.translateError(domain.ErrConfigNotFound)
 		return api.Fail[api.EmptyData](code, msg)
 	}
 
 	cfg, err := a.configRepo.ToRulespecConfig(config)
 	if err != nil {
-		code, msg := a.TranslateError(err)
+		code, msg := a.translateError(err)
 		return api.Fail[api.EmptyData](code, msg)
 	}
 
 	if err := a.service.LoadRules(a.ctx, a.currentSession, cfg); err != nil {
-		code, msg := a.TranslateError(err)
+		code, msg := a.translateError(err)
 		return api.Fail[api.EmptyData](code, msg)
 	}
 
@@ -628,7 +628,7 @@ func (a *App) LoadActiveConfigToSession() api.Response[api.EmptyData] {
 // QueryMatchedEventHistory 根据条件查询匹配事件历史记录。
 func (a *App) QueryMatchedEventHistory(sessionID, finalResult, url, method string, startTime, endTime int64, offset, limit int) api.Response[EventHistoryData] {
 	if a.eventRepo == nil {
-		code, msg := a.TranslateError(domain.ErrDatabaseNotInitialized)
+		code, msg := a.translateError(domain.ErrDatabaseNotInitialized)
 		return api.Fail[EventHistoryData](code, msg)
 	}
 
@@ -643,7 +643,7 @@ func (a *App) QueryMatchedEventHistory(sessionID, finalResult, url, method strin
 		Limit:       limit,
 	})
 	if err != nil {
-		code, msg := a.TranslateError(err)
+		code, msg := a.translateError(err)
 		return api.Fail[EventHistoryData](code, msg)
 	}
 
@@ -653,13 +653,13 @@ func (a *App) QueryMatchedEventHistory(sessionID, finalResult, url, method strin
 // CleanupEventHistory 清理指定天数之前的旧事件记录。
 func (a *App) CleanupEventHistory(retentionDays int) api.Response[api.EmptyData] {
 	if a.eventRepo == nil {
-		code, msg := a.TranslateError(domain.ErrDatabaseNotInitialized)
+		code, msg := a.translateError(domain.ErrDatabaseNotInitialized)
 		return api.Fail[api.EmptyData](code, msg)
 	}
 
 	deleted, err := a.eventRepo.CleanupOldEvents(a.ctx, retentionDays)
 	if err != nil {
-		code, msg := a.TranslateError(err)
+		code, msg := a.translateError(err)
 		return api.Fail[api.EmptyData](code, msg)
 	}
 
