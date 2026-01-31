@@ -217,6 +217,7 @@ func buildLaunchArgs(port int, opts Options) []string {
 		fmt.Sprintf("--remote-debugging-port=%d", port),
 		"--no-first-run",
 		"--no-default-browser-check",
+		"--start-maximized",
 	}
 
 	// Linux 环境下添加额外参数
