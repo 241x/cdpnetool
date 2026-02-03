@@ -47,6 +47,8 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
   const [configInfoExpanded, setConfigInfoExpanded] = useState(false)
   const [jsonEditorContent, setJsonEditorContent] = useState('')
   const [jsonError, setJsonError] = useState<string | null>(null)
+  const [showCreateDialog, setShowCreateDialog] = useState(false)
+  const [newConfigName, setNewConfigName] = useState('')
   const [confirmDialog, setConfirmDialog] = useState<{
     show: boolean
     title: string
@@ -167,8 +169,16 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
   }
 
   const handleCreateRuleSet = async () => {
+    setShowCreateDialog(true)
+  }
+
+  const handleConfirmCreate = async () => {
+    const name = newConfigName.trim() || t('rules.newConfig')
+    setShowCreateDialog(false)
+    setNewConfigName('')
+    
     try {
-      const result = await api.config.create(t('rules.newConfig'))
+      const result = await api.config.create(name)
       if (result?.success && result.data && result.data.config) {
         await loadRuleSets()
         const newConfig = JSON.parse(result.data.configJson) as Config
@@ -649,6 +659,33 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
         onExport={handleExportConfig}
         getRuleCount={getRuleCount}
       />
+
+      {showCreateDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-background border rounded-lg shadow-lg p-6 w-full max-w-sm mx-4">
+            <h3 className="text-lg font-semibold mb-4">{t('common.add')}</h3>
+            <Input
+              value={newConfigName}
+              onChange={(e) => setNewConfigName(e.target.value)}
+              placeholder={t('rules.newConfig')}
+              className="mb-6"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleConfirmCreate()
+                if (e.key === 'Escape') { setShowCreateDialog(false); setNewConfigName('') }
+              }}
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => { setShowCreateDialog(false); setNewConfigName('') }}>
+                {t('common.cancel')}
+              </Button>
+              <Button onClick={handleConfirmCreate}>
+                {t('common.confirm')}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
