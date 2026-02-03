@@ -49,6 +49,8 @@
     "unsavedChanges": "Unsaved changes",
     "newRule": "New Rule",
     "noRules": "No rules yet, click \"Add Rule\" to create one",
+    "importPlaceholder": "Click to select JSON file",
+    "importDesc": "Supports .json files",
     "priority": "Priority",
     "stage": "Stage",
     "requestStage": "Request Stage",

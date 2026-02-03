@@ -49,6 +49,8 @@
     "unsavedChanges": "有未保存更改",
     "newRule": "新规则",
     "noRules": "暂无规则，点击上方 “添加规则” 按钮创建",
+    "importPlaceholder": "点击选择 JSON 文件",
+    "importDesc": "支持 .json 文件",
     "priority": "优先级",
     "stage": "执行阶段",
     "requestStage": "请求阶段",

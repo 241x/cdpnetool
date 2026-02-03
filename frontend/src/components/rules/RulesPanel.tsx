@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -7,16 +7,15 @@ import { Switch } from '@/components/ui/switch'
 import { useToast } from '@/hooks/use-toast'
 import { useSessionStore } from '@/stores'
 import { RuleListEditor } from './RuleEditor'
+import { ImportExportDialog } from './ImportExportDialog'
 import { useTranslation } from 'react-i18next'
 import { 
   FileJson, 
   Plus, 
-  Download, 
-  Upload, 
   Save, 
   Trash2, 
   ChevronDown, 
-  ChevronRight 
+  ChevronRight,
 } from 'lucide-react'
 import type { Rule, Config } from '@/types/rules'
 import { createEmptyConfig } from '@/types/rules'
@@ -36,7 +35,7 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
   const { activeConfigId, setActiveConfigId } = useSessionStore()
   const [ruleSet, setRuleSet] = useState<Config>(createEmptyConfig())
   const [showJson, setShowJson] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [showImportExport, setShowImportExport] = useState(false)
   const [ruleSets, setRuleSets] = useState<model.ConfigRecord[]>([])
   const [currentRuleSetId, setCurrentRuleSetId] = useState<number>(0)
   const [currentRuleSetName, setCurrentRuleSetName] = useState<string>(t('rules.newConfig'))
@@ -388,19 +387,20 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleSave])
 
-  const handleExport = async () => {
-    const json = JSON.stringify(ruleSet, null, 2)
-    const result = await api.config.export(currentRuleSetName || "ruleset", json)
-    if (result && !result.success) {
-      toast({ variant: 'destructive', title: 'Error', description: result.message })
-    } else if (result && result.success) {
-      toast({ variant: 'success', title: 'Success' })
+  const handleExportConfig = async (config: model.ConfigRecord) => {
+    try {
+      const result = await api.config.export(config.name || "ruleset", config.configJson || "{}")
+      if (result && !result.success) {
+        toast({ variant: 'destructive', title: 'Error', description: result.message })
+      } else if (result && result.success) {
+        toast({ variant: 'success', title: t('common.export') + ' Success' })
+      }
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Error', description: String(e) })
     }
   }
 
-  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+  const handleImportFile = (file: File) => {
     const reader = new FileReader()
     reader.onload = (event) => {
       try {
@@ -410,6 +410,7 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
           setRuleSet(imported)
           updateDirty(true)
           toast({ variant: 'success', title: 'Success' })
+          setShowImportExport(false)
         } else {
           toast({ variant: 'destructive', title: 'Error' })
         }
@@ -418,18 +419,10 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
       }
     }
     reader.readAsText(file)
-    e.target.value = ''
   }
 
   return (
     <div className="flex-1 flex min-h-0 h-full">
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".json"
-        onChange={handleImport}
-        className="hidden"
-      />
       {isInitializing ? (
         <div className="flex items-center justify-center w-full text-muted-foreground">
           <div className="text-center">
@@ -445,18 +438,13 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
                 <Button size="sm" variant="ghost" onClick={handleCreateRuleSet} title={t('common.add')} className="h-8 w-8 p-0">
                   <Plus className="w-4 h-4" />
                 </Button>
-                <Button size="sm" variant="ghost" onClick={() => fileInputRef.current?.click()} title={t('common.import')} className="h-8 w-8 p-0">
-                  <Upload className="w-4 h-4" />
-                </Button>
                 <Button 
                   size="sm" 
                   variant="ghost" 
-                  onClick={handleExport} 
-                  title={t('common.export')} 
-                  className="h-8 w-8 p-0"
-                  disabled={ruleSets.length === 0}
+                  onClick={() => setShowImportExport(true)} 
+                  className="h-8 px-2 text-xs font-medium"
                 >
-                  <Download className="w-4 h-4" />
+                  {t('common.import')}/{t('common.export')}
                 </Button>
               </div>
             </div>
@@ -655,6 +643,15 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
           </div>
         </div>
       )}
+
+      <ImportExportDialog
+        open={showImportExport}
+        onClose={() => setShowImportExport(false)}
+        ruleSets={ruleSets}
+        onImport={handleImportFile}
+        onExport={handleExportConfig}
+        getRuleCount={getRuleCount}
+      />
     </div>
   )
 }
