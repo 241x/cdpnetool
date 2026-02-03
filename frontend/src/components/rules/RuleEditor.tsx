@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
@@ -49,20 +49,24 @@ export function RuleEditor({
   }
 
   // 计算条件数量摘要
-  const conditionCount =
-    (rule.match.allOf?.length || 0) +
-    (rule.match.anyOf?.length || 0)
+  const conditionCount = useMemo(
+    () => (rule.match.allOf?.length || 0) + (rule.match.anyOf?.length || 0),
+    [rule.match.allOf, rule.match.anyOf]
+  )
 
   // 获取行为摘要
-  const getActionsSummary = () => {
+  const actionsSummary = useMemo(() => {
     if (rule.actions.length === 0) return 'No actions'
     const types = rule.actions.map(a => ACTION_TYPE_LABELS[a.type])
     if (types.length <= 2) return types.join(', ')
     return `${types[0]} & ${types.length - 1} more`
-  }
+  }, [rule.actions])
 
   // 检查是否有终结性行为
-  const hasTerminalAction = rule.actions.some(isTerminalAction)
+  const hasTerminalAction = useMemo(
+    () => rule.actions.some(isTerminalAction),
+    [rule.actions]
+  )
 
   return (
     <div className={`border rounded-lg bg-card overflow-hidden ${!rule.enabled ? 'opacity-60' : ''}`}>
@@ -104,7 +108,7 @@ export function RuleEditor({
             )}
           </div>
           <div className="text-xs text-muted-foreground mt-0.5">
-            {conditionCount} {t('rules.conditions')} · {getActionsSummary()}
+            {conditionCount} {t('rules.conditions')} · {actionsSummary}
           </div>
         </div>
 
@@ -120,7 +124,7 @@ export function RuleEditor({
       {isExpanded && (
         <div className="p-4 space-y-4">
           {/* 基础信息 */}
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="space-y-1">
               <label className="text-sm font-medium">ID</label>
               <Input
@@ -182,7 +186,7 @@ export function RuleEditor({
               />
             </TabsContent>
 
-            <TabsContent value="actions" className="pt-4">
+            <TabsContent value="actions" className="space-y-4 pt-4">
               <ActionsEditor
                 actions={rule.actions}
                 onChange={updateActions}
@@ -195,8 +199,6 @@ export function RuleEditor({
     </div>
   )
 }
-
-// ==================== 规则列表编辑器 ====================
 
 interface RuleListEditorProps {
   rules: Rule[]
@@ -231,7 +233,7 @@ export function RuleListEditor({ rules, onChange }: RuleListEditorProps) {
   const sortedRules = [...rules].sort((a, b) => b.priority - a.priority)
 
   return (
-    <div className="space-y-3 pr-4">
+    <div className="space-y-3">
       {sortedRules.map((rule) => {
         const originalIndex = rules.findIndex(r => r.id === rule.id)
         return (

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -92,24 +92,23 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
     api.config.setDirty(dirty)
   }
 
+  const updateJsonEditorFromRuleSet = useCallback((config: Config) => {
+    setJsonEditorContent(JSON.stringify(config, null, 2))
+    setJsonError(null)
+  }, [])
+
   const handleRulesChange = (rules: Rule[]) => {
     const newConfig = { ...ruleSet, rules }
     setRuleSet(newConfig)
-    setJsonEditorContent(JSON.stringify(newConfig, null, 2))
-    setJsonError(null)
     updateDirty(true)
   }
 
+  // 同步 ruleSet 到 JSON 编辑器（仅在显示 JSON 时）
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault()
-        handleSave()
-      }
+    if (showJson) {
+      updateJsonEditorFromRuleSet(ruleSet)
     }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [ruleSet, currentRuleSetId, currentRuleSetName, sessionId, isLoading])
+  }, [ruleSet, showJson, updateJsonEditorFromRuleSet])
 
   const loadRuleSetData = (record: model.ConfigRecord) => {
     try {
@@ -338,7 +337,7 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
     }
   }
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (showJson && jsonError) {
       toast({ variant: 'destructive', title: 'Error', description: 'JSON Error' })
       return
@@ -376,7 +375,18 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [showJson, jsonError, ruleSet, currentRuleSetName, currentRuleSetId, activeConfigId, sessionId, toast, t])
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault()
+        handleSave()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [handleSave])
 
   const handleExport = async () => {
     const json = JSON.stringify(ruleSet, null, 2)
@@ -412,7 +422,7 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
   }
 
   return (
-    <div className="flex-1 flex min-h-0">
+    <div className="flex-1 flex min-h-0 h-full">
       {isInitializing ? (
         <div className="flex items-center justify-center w-full text-muted-foreground">
           <div className="text-center">
@@ -573,7 +583,7 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
 
                 <div className="flex-1 min-h-0 flex flex-col">
                   {showJson ? (
-                    <div className="flex-1 flex flex-col min-h-0">
+                    <div className="flex-1 min-h-0 flex flex-col">
                       <Textarea
                         value={jsonEditorContent}
                         onChange={(e) => {
@@ -591,19 +601,19 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
                           }
                           updateDirty(true)
                         }}
-                        className={`flex-1 h-full font-mono text-sm resize-none focus-visible:ring-1 ${
+                        className={`flex-1 font-mono text-sm resize-none focus-visible:ring-1 ${
                           jsonError ? 'border-destructive' : ''
                         }`}
                         spellCheck={false}
                       />
                       {jsonError && (
-                        <div className="mt-2 p-2 text-sm text-destructive bg-destructive/10 rounded-md shrink-0">
+                        <div className="p-2 text-sm text-destructive bg-destructive/10 rounded-md shrink-0">
                           {jsonError}
                         </div>
                       )}
                     </div>
                   ) : (
-                    <ScrollArea className="flex-1">
+                    <ScrollArea className="flex-1 pr-4">
                       <RuleListEditor
                         rules={ruleSet.rules}
                         onChange={handleRulesChange}
