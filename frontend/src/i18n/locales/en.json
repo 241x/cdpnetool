@@ -16,9 +16,9 @@
     "cancel": "Cancel",
     "confirm": "Confirm",
     "loading": "Loading...",
-    "target": "Target",
-    "rules": "Rules",
-    "events": "Events",
+    "target": "Target Page",
+    "rules": "Rule Config",
+    "events": "Captured Records",
     "network": "Network"
   },
   "toolbar": {

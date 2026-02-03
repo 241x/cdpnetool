@@ -16,9 +16,9 @@
     "cancel": "取消",
     "confirm": "确定",
     "loading": "加载中...",
-    "target": "目标",
-    "rules": "规则",
-    "events": "事件",
+    "target": "目标页面",
+    "rules": "规则配置",
+    "events": "捕获记录",
     "network": "网络"
   },
   "toolbar": {
