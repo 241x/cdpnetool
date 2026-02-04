@@ -283,7 +283,6 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
         await api.config.setActive(config.id)
         setActiveConfigId(config.id)
         setIntercepting(true)
-        await loadRuleSets()
         toast({ variant: 'success', title: `Config 「${config.name}」 ${t('rules.running')}` })
       } catch (e) {
         toast({ variant: 'destructive', title: 'Error', description: String(e) })
@@ -467,11 +466,6 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
                     }`}
                     onClick={() => handleSelectRuleSet(config)}
                   >
-                    <Switch
-                      checked={config.id === activeConfigId}
-                      onCheckedChange={(checked) => handleToggleConfig(config, checked)}
-                      disabled={!isConnected && config.id !== activeConfigId}
-                    />
                     <div className="flex-1 min-w-0">
                       {editingName === config.id ? (
                         <Input
@@ -491,11 +485,13 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
                           <div className="text-sm font-medium truncate">{config.name}</div>
                           <div className="text-xs text-muted-foreground">
                             {t('rules.ruleCount', { count: getRuleCount(config) })}
-                            {config.id === activeConfigId && <span className="ml-1 text-green-500">· {t('rules.running')}</span>}
                           </div>
                         </>
                       )}
                     </div>
+                    {config.id === activeConfigId && (
+                      <span className="w-2 h-2 rounded-full shrink-0 bg-green-400 shadow-[0_0_6px_rgba(74,222,128,0.8)]" />
+                    )}
                   </div>
                 ))}
               </div>
@@ -523,6 +519,19 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
                     </button>
                     {isDirty && <span className="w-2 h-2 rounded-full bg-primary animate-pulse" title={t('rules.unsavedChanges')} />}
                     <div className="flex-1" />
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={activeConfigId === currentRuleSetId}
+                        onCheckedChange={(checked) => handleToggleConfig(
+                          ruleSets.find(c => c.id === currentRuleSetId)!,
+                          checked
+                        )}
+                        disabled={!isConnected && activeConfigId !== currentRuleSetId}
+                      />
+                      <span className="text-sm text-muted-foreground">
+                        {activeConfigId === currentRuleSetId ? t('rules.enabled') : t('rules.disabled')}
+                      </span>
+                    </div>
                     <Button size="sm" onClick={handleSave} disabled={isLoading}>
                       <Save className="w-4 h-4 mr-1" />
                       {isLoading ? t('common.saving') : t('common.save')}
