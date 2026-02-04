@@ -12,7 +12,6 @@ import { RulesPanel } from '@/components/rules/RulesPanel'
 import { api } from '@/api'
 import { useTranslation } from 'react-i18next'
 import { 
-  RefreshCw, 
   Moon, 
   Sun,
   Link2,
@@ -226,15 +225,6 @@ function App() {
         </div>
         
         <div className="flex items-center gap-2">
-          <Button 
-            variant="outline" 
-            size="icon"
-            onClick={() => refreshTargets()}
-            disabled={!isConnected}
-            title={t('toolbar.refreshTargets')}
-          >
-            <RefreshCw className="w-4 h-4" />
-          </Button>
           <div className="flex items-center gap-2 text-sm">
             <span className={`flex items-center gap-1 ${isConnected ? 'text-green-500' : 'text-muted-foreground'}`}>
               <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-muted-foreground'}`} />
@@ -286,6 +276,7 @@ function App() {
                 attachedTargetId={attachedTargetId}
                 onToggle={handleToggleTarget}
                 isConnected={isConnected}
+                onRefresh={() => refreshTargets()}
               />
             </div>
           </TabsContent>
