@@ -117,7 +117,7 @@ function renderActionFields(action: Action, onChange: (action: Action) => void) 
             value={action.name || ''}
             onChange={(e) => updateField('name', e.target.value)}
             placeholder={getNamePlaceholder(action.type)}
-            className="w-40"
+            className="flex-1"
           />
           <Input
             value={(action.value as string) || ''}
