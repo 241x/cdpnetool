@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"sync"
 	"time"
@@ -380,7 +381,18 @@ func (o *Orchestrator) handleEvent(state *sessionState, ts *cdp.TargetSession, e
 			return
 		}
 		if rb != nil {
-			body = []byte(rb.Body)
+			// GetResponseBody 返回的是 base64 编码的字符串，需要解码为原始字节
+			if rb.Base64Encoded {
+				decoded, err := base64.StdEncoding.DecodeString(rb.Body)
+				if err != nil {
+					o.log.Err(err, "解码响应体失败", "requestID", ev.RequestID)
+					body = []byte(rb.Body)
+				} else {
+					body = decoded
+				}
+			} else {
+				body = []byte(rb.Body)
+			}
 		}
 
 		resp := cdp.ToNeutralResponse(ev, body)
