@@ -171,22 +171,7 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
     setCollapsed(prev => ({ ...prev, [key]: !prev[key] }))
   }
 
-  const formattedRequestBody = useMemo(() => {
-    if (!request.body) return null
-    return decodeBase64(request.body)
-  }, [request.body])
-
-  const isTextContent = (contentType: string): boolean => {
-    const textTypes = [
-      'text/',
-      'application/json',
-      'application/xml',
-      'application/javascript',
-      'application/x-www-form-urlencoded'
-    ]
-    return textTypes.some(type => contentType.toLowerCase().includes(type))
-  }
-
+  // 解码 Base64 编码的字符串
   const decodeBase64 = (base64Str: string): string => {
     try {
       const binaryString = atob(base64Str)
@@ -200,11 +185,27 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
     }
   }
 
+  const isTextContent = (contentType: string): boolean => {
+    const textTypes = [
+      'text/',
+      'application/json',
+      'application/xml',
+      'application/javascript',
+      'application/x-www-form-urlencoded'
+    ]
+    return textTypes.some(type => contentType.toLowerCase().includes(type))
+  }
+
   const formatBytes = (bytes: number): string => {
     if (bytes < 1024) return bytes + ' B'
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB'
     return (bytes / (1024 * 1024)).toFixed(2) + ' MB'
   }
+
+  const formattedRequestBody = useMemo(() => {
+    if (!request.body) return null
+    return decodeBase64(request.body)
+  }, [request.body])
 
   const formattedResponseBody = useMemo((): { isPreviewable: boolean; content?: string; size?: string; type?: string } | null => {
     if (!response?.body) return null

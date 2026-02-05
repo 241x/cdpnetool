@@ -49,6 +49,11 @@ func ToNeutralRequest(ev *fetch.RequestPausedReply) *domain.Request {
 		}
 	}
 
+	// 处理请求体 (PostData)
+	if ev.Request.PostData != nil {
+		req.Body = []byte(*ev.Request.PostData)
+	}
+
 	return req
 }
 

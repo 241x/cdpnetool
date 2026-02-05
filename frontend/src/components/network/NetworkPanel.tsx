@@ -166,6 +166,22 @@ function TrafficItem({ event, isExpanded, onToggleExpand }: { event: NetworkEven
 
 function TrafficDetailView({ request, response }: { request: TrafficRequest, response?: TrafficResponse }) {
   const { t } = useTranslation()
+  
+  // 解码 Base64 编码的请求体
+  const formattedRequestBody = useMemo(() => {
+    if (!request.body) return null
+    try {
+      const binaryString = atob(request.body)
+      const bytes = new Uint8Array(binaryString.length)
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i)
+      }
+      return new TextDecoder('utf-8').decode(bytes)
+    } catch {
+      return request.body
+    }
+  }, [request.body])
+
   return (
     <div className="space-y-6">
       <section>
@@ -186,7 +202,7 @@ function TrafficDetailView({ request, response }: { request: TrafficRequest, res
           {request.body && (
             <div className="flex gap-2 pt-2">
               <span className="text-muted-foreground w-24 shrink-0">Payload:</span>
-              <pre className="p-2 bg-muted rounded w-full overflow-auto max-h-40">{request.body}</pre>
+              <pre className="p-2 bg-muted rounded w-full overflow-auto max-h-40">{formattedRequestBody}</pre>
             </div>
           )}
         </div>
