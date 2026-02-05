@@ -272,6 +272,12 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
                       <span className="text-muted-foreground min-w-[140px] shrink-0">Request Method:</span>
                       <span>{request.method}</span>
                     </div>
+                    {request.resourceType && (
+                      <div className="flex gap-2">
+                        <span className="text-muted-foreground min-w-[140px] shrink-0">Resource Type:</span>
+                        <span className="font-semibold text-blue-600 dark:text-blue-400">{request.resourceType}</span>
+                      </div>
+                    )}
                     {response && response.statusCode !== undefined && response.statusCode !== null && (
                       <div className="flex gap-2">
                         <span className="text-muted-foreground min-w-[140px] shrink-0">Status Code:</span>
