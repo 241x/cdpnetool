@@ -11,8 +11,7 @@ import {
   ChevronRight,
   ChevronUp,
   Trash2,
-  Filter,
-  CheckCircle
+  Filter
 } from 'lucide-react'
 import type { 
   MatchedEventWithId, 
@@ -33,24 +32,9 @@ export function EventsPanel({
   matchedEvents, 
   onClearMatched, 
 }: EventsPanelProps) {
-  const { t } = useTranslation()
-  const totalMatched = matchedEvents.length
-
   return (
     <div className="h-full flex flex-col">
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium">
-          <CheckCircle className="w-4 h-4 text-primary" />
-          {t('common.events')}
-          {totalMatched > 0 && (
-            <Badge variant="secondary" className="ml-1 text-xs">{totalMatched}</Badge>
-          )}
-        </div>
-      </div>
-
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <MatchedEventsList events={matchedEvents} onClear={onClearMatched} />
-      </div>
+      <MatchedEventsList events={matchedEvents} onClear={onClearMatched} />
     </div>
   )
 }
@@ -435,22 +419,22 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
                 <>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[11px] font-bold text-muted-foreground uppercase">Response Body</span>
-                    {formattedResponseBody && 'content' in formattedResponseBody && formattedResponseBody.content.trim().startsWith('{') && (
+                    {formattedResponseBody && 'content' in formattedResponseBody && formattedResponseBody.content && formattedResponseBody.content.trim().startsWith('{') && (
                       <Badge variant="outline" className="text-[10px]">JSON</Badge>
                     )}
                   </div>
                   {formattedResponseBody && 'isPreviewable' in formattedResponseBody ? (
-                    formattedResponseBody.isPreviewable ? (
+                    formattedResponseBody.isPreviewable && formattedResponseBody.content ? (
                       <pre className="text-xs font-mono p-4 bg-muted/50 rounded-lg border overflow-auto whitespace-pre-wrap leading-relaxed">
                         {formattedResponseBody.content}
                       </pre>
-                    ) : (
+                    ) : !formattedResponseBody.isPreviewable ? (
                       <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                         <div className="text-sm mb-2">无法预览此类型文件</div>
                         <div className="text-xs">类型: {formattedResponseBody.type}</div>
                         <div className="text-xs">大小: {formattedResponseBody.size}</div>
                       </div>
-                    )
+                    ) : null
                   ) : null}
                 </>
               ) : (
