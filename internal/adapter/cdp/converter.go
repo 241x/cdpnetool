@@ -15,7 +15,9 @@ func ToNeutralRequest(ev *fetch.RequestPausedReply) *domain.Request {
 	req.ID = string(ev.RequestID)
 	req.URL = ev.Request.URL
 	req.Method = ev.Request.Method
-	req.ResourceType = string(ev.ResourceType)
+
+	// 使用智能归类函数将 CDP 的 ResourceType 转换为我们的规范类型
+	req.ResourceType = domain.NormalizeResourceType(string(ev.ResourceType), ev.Request.URL)
 
 	// 处理 Header
 	var headers map[string]string

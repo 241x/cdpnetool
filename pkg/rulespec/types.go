@@ -281,19 +281,3 @@ func (a *Action) GetBodyEncoding() BodyEncoding {
 	}
 	return a.BodyEncoding
 }
-
-// ResourceType 资源类型
-type ResourceType string
-
-const (
-	ResourceTypeDocument   ResourceType = "document"   // HTML 文档
-	ResourceTypeScript     ResourceType = "script"     // JavaScript
-	ResourceTypeStylesheet ResourceType = "stylesheet" // CSS
-	ResourceTypeImage      ResourceType = "image"      // 图片
-	ResourceTypeMedia      ResourceType = "media"      // 音视频
-	ResourceTypeFont       ResourceType = "font"       // 字体
-	ResourceTypeXHR        ResourceType = "xhr"        // XMLHttpRequest
-	ResourceTypeFetch      ResourceType = "fetch"      // Fetch API
-	ResourceTypeWebSocket  ResourceType = "websocket"  // WebSocket
-	ResourceTypeOther      ResourceType = "other"      // 其他
-)

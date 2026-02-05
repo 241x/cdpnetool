@@ -139,8 +139,9 @@ func (e *Engine) evalCondition(req *domain.Request, c *rulespec.Condition) bool 
 		return false
 
 	case rulespec.ConditionResourceType:
+		// 直接比较 ResourceType（已经是规范化的小写字符串）
 		for _, v := range c.Values {
-			if strings.EqualFold(req.ResourceType, v) {
+			if string(req.ResourceType) == strings.ToLower(v) {
 				return true
 			}
 		}
