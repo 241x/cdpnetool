@@ -31,6 +31,11 @@ func (a *Auditor) SetEnabled(enabled bool) {
 	a.enabled = enabled
 }
 
+// IsEnabled 获取审计启用状态
+func (a *Auditor) IsEnabled() bool {
+	return a.enabled
+}
+
 // Record 记录一个完整的流量事件
 func (a *Auditor) Record(
 	sessionID string,

@@ -174,12 +174,8 @@ func (o *Orchestrator) AttachTarget(ctx context.Context, id domain.SessionID, ta
 		o.handleEvent(state, ts, ev)
 	})
 
-	// 如果当前会话已开启拦截，物理启用该 Target 的拦截
-	state.mu.Lock()
-	enabled := state.interceptionEnabled
-	state.mu.Unlock()
-
-	if enabled {
+	// 根据当前业务状态决定是否启用该 Target 的物理拦截
+	if o.shouldEnablePhysicalInterception(state) {
 		if err := state.interceptor.Enable(state.ctx, ts.Client); err != nil {
 			o.log.Err(err, "Attach 时启用拦截失败", "target", string(target))
 		}
@@ -248,20 +244,16 @@ func (o *Orchestrator) DisableInterception(ctx context.Context, id domain.Sessio
 	state.interceptionEnabled = false
 	state.mu.Unlock()
 
-	// 遍历所有已附着的 Target 物理关闭拦截
-	targets := state.sess.GetTargets()
-	for _, tid := range targets {
-		ts, ok := state.clientMgr.GetSession(tid)
-		if ok {
-			if err := state.interceptor.Disable(ctx, ts.Client); err != nil {
-				o.log.Err(err, "物理关闭拦截失败", "target", string(tid))
-			}
-		}
+	// 根据业务状态更新物理拦截（如果全量流量仍开启则保持拦截）
+	if err := o.updatePhysicalInterception(ctx, state); err != nil {
+		return err
 	}
 
-	// 关闭工作池
-	if state.workPool != nil {
-		state.workPool.Stop()
+	// 如果物理拦截已完全关闭，停止工作池
+	if !o.shouldEnablePhysicalInterception(state) {
+		if state.workPool != nil {
+			state.workPool.Stop()
+		}
 	}
 
 	o.log.Info("会话逻辑拦截已关闭", "sessionID", string(id))
@@ -321,28 +313,13 @@ func (o *Orchestrator) EnableTrafficCapture(ctx context.Context, id domain.Sessi
 	if !ok {
 		return domain.ErrSessionNotFound
 	}
+
+	// 更新审计器状态
 	state.trafficAuditor.SetEnabled(enabled)
 
-	// 如果开启了捕获，且当前有附着目标，确保物理拦截已启用
-	if !enabled {
-		o.log.Info("更新流量捕获状态", "sessionID", string(id), "enabled", enabled)
-		return nil
-	}
-
-	targets := state.sess.GetTargets()
-	if len(targets) == 0 {
-		o.log.Info("更新流量捕获状态", "sessionID", string(id), "enabled", enabled)
-		return nil
-	}
-
-	for _, tid := range targets {
-		ts, ok := state.clientMgr.GetSession(tid)
-		if !ok {
-			continue
-		}
-		if err := state.interceptor.Enable(ctx, ts.Client); err != nil {
-			o.log.Err(err, "启用全量捕获时激活目标失败", "target", string(tid))
-		}
+	// 根据新状态更新物理拦截
+	if err := o.updatePhysicalInterception(ctx, state); err != nil {
+		return err
 	}
 
 	o.log.Info("更新流量捕获状态", "sessionID", string(id), "enabled", enabled)
@@ -499,6 +476,38 @@ func (o *Orchestrator) applyResult(state *sessionState, ts *cdp.TargetSession, e
 			}
 		}
 	}
+}
+
+// shouldEnablePhysicalInterception 判断是否需要启用物理拦截
+func (o *Orchestrator) shouldEnablePhysicalInterception(state *sessionState) bool {
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	return state.interceptionEnabled || state.trafficAuditor.IsEnabled()
+}
+
+// updatePhysicalInterception 根据业务状态更新所有目标的物理拦截
+func (o *Orchestrator) updatePhysicalInterception(ctx context.Context, state *sessionState) error {
+	shouldEnable := o.shouldEnablePhysicalInterception(state)
+	targets := state.sess.GetTargets()
+
+	for _, tid := range targets {
+		ts, ok := state.clientMgr.GetSession(tid)
+		if !ok {
+			continue
+		}
+
+		if shouldEnable {
+			if err := state.interceptor.Enable(ctx, ts.Client); err != nil {
+				o.log.Err(err, "物理拦截启用失败", "target", string(tid))
+			}
+		} else {
+			if err := state.interceptor.Disable(ctx, ts.Client); err != nil {
+				o.log.Err(err, "物理拦截关闭失败", "target", string(tid))
+			}
+		}
+	}
+
+	return nil
 }
 
 // get 获取指定会话的状态
