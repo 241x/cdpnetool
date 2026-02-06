@@ -21,7 +21,8 @@ import {
   FileJson,
   Activity,
   Chrome,
-  Languages
+  Languages,
+  Bug
 } from 'lucide-react'
 
 function App() {
@@ -274,8 +275,8 @@ function App() {
                 {t('common.events')}
               </TabsTrigger>
               <TabsTrigger value="network" className="gap-2">
-                <Activity className="w-4 h-4" />
-                {t('common.network')}
+                <Bug className="w-4 h-4" />
+                {t('common.requestPreview')}
               </TabsTrigger>
             </TabsList>
           </div>

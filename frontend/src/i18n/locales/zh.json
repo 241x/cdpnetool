@@ -21,7 +21,8 @@
     "target": "目标页面",
     "rules": "规则配置",
     "events": "捕获记录",
-    "network": "网络"
+    "network": "网络",
+    "requestPreview": "请求预览"
   },
   "toolbar": {
     "launchBrowser": "启动浏览器",

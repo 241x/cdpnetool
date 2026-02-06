@@ -21,7 +21,8 @@
     "target": "Target Page",
     "rules": "Rule Config",
     "events": "Captured Records",
-    "network": "Network"
+    "network": "Network",
+    "requestPreview": "Request Preview"
   },
   "toolbar": {
     "launchBrowser": "Launch Browser",
