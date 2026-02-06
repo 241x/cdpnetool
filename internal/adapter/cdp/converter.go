@@ -1,6 +1,8 @@
 package cdp
 
 import (
+	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"strings"
 
@@ -51,19 +53,25 @@ func ToNeutralRequest(ev *fetch.RequestPausedReply) *domain.Request {
 		}
 	}
 
-	// 处理请求体 (优先使用 PostDataEntries，处理大数据场景)
+	// 处理请求体：优先使用 PostDataEntries（支持大数据），回退到 PostData（已废弃）
 	if len(ev.Request.PostDataEntries) > 0 {
-		var bodyParts []string
+		// PostDataEntries.Bytes 是 Base64 编码，需要解码
+		var bodyParts [][]byte
 		for _, entry := range ev.Request.PostDataEntries {
 			if entry.Bytes != nil {
-				bodyParts = append(bodyParts, *entry.Bytes)
+				decodedBytes, err := base64.StdEncoding.DecodeString(*entry.Bytes)
+				if err != nil {
+					bodyParts = append(bodyParts, []byte(*entry.Bytes))
+				} else {
+					bodyParts = append(bodyParts, decodedBytes)
+				}
 			}
 		}
 		if len(bodyParts) > 0 {
-			req.Body = []byte(strings.Join(bodyParts, ""))
+			req.Body = bytes.Join(bodyParts, nil)
 		}
 	} else if ev.Request.PostData != nil {
-		// 向后兼容：使用 PostData（已废弃但仍然支持）
+		// PostData 是原始字符串，直接使用
 		req.Body = []byte(*ev.Request.PostData)
 	}
 
