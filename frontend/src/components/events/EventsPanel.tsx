@@ -11,7 +11,9 @@ import {
   ChevronRight,
   ChevronUp,
   Trash2,
-  Filter
+  Filter,
+  Copy,
+  Check
 } from 'lucide-react'
 import type { 
   MatchedEventWithId, 
@@ -382,51 +384,59 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
         </TabsContent>
 
         <TabsContent value="payload" className="m-0">
-          <ScrollArea className="max-h-[500px]">
-            <div className="p-4">
-              {request.body ? (
-                <>
-                  <div className="text-[11px] font-bold text-muted-foreground uppercase mb-2">Request Payload</div>
-                  <pre className="text-xs font-mono p-4 bg-muted/50 rounded-lg border overflow-auto whitespace-pre-wrap leading-relaxed">
+          <div className="p-4">
+            {request.body ? (
+              <>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-[11px] font-bold text-muted-foreground uppercase">Request Payload</div>
+                  <CopyButton content={formattedRequestBody || ''} />
+                </div>
+                <ScrollArea className="h-[200px]">
+                  <pre className="text-xs font-mono p-4 bg-muted/50 rounded-lg border break-all leading-relaxed" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                     {formattedRequestBody}
                   </pre>
-                </>
-              ) : (
-                <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                  <div className="text-xs italic">No payload data</div>
-                </div>
-              )}
-            </div>
-          </ScrollArea>
+                </ScrollArea>
+              </>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                <div className="text-xs italic">No payload data</div>
+              </div>
+            )}
+          </div>
         </TabsContent>
 
         <TabsContent value="response" className="m-0">
-          <ScrollArea className="max-h-[500px]">
-            <div className="p-4">
-              {response?.body ? (
-                <>
-                  <div className="text-[11px] font-bold text-muted-foreground uppercase mb-2">Response Body</div>
-                  {formattedResponseBody && 'isPreviewable' in formattedResponseBody ? (
-                    formattedResponseBody.isPreviewable && formattedResponseBody.content ? (
-                      <pre className="text-xs font-mono p-4 bg-muted/50 rounded-lg border overflow-auto whitespace-pre-wrap leading-relaxed">
+          <div className="p-4">
+            {response?.body ? (
+              <>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-[11px] font-bold text-muted-foreground uppercase">Response Body</div>
+                  {formattedResponseBody && 'isPreviewable' in formattedResponseBody && formattedResponseBody.isPreviewable && formattedResponseBody.content && (
+                    <CopyButton content={formattedResponseBody.content} />
+                  )}
+                </div>
+                {formattedResponseBody && 'isPreviewable' in formattedResponseBody ? (
+                  formattedResponseBody.isPreviewable && formattedResponseBody.content ? (
+                    <ScrollArea className="h-[200px]">
+                      <pre className="text-xs font-mono p-4 bg-muted/50 rounded-lg border break-all leading-relaxed" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                         {formattedResponseBody.content}
                       </pre>
-                    ) : !formattedResponseBody.isPreviewable ? (
-                      <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                        <div className="text-sm mb-2">无法预览此类型文件</div>
-                        <div className="text-xs">类型: {formattedResponseBody.type}</div>
-                        <div className="text-xs">大小: {formattedResponseBody.size}</div>
-                      </div>
-                    ) : null
-                  ) : null}
-                </>
-              ) : (
-                <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                  <div className="text-xs italic">No response data</div>
-                </div>
-              )}
-            </div>
-          </ScrollArea>
+                    </ScrollArea>
+                  ) : !formattedResponseBody.isPreviewable ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                      <div className="text-sm mb-2">无法预览此类型文件</div>
+                      <div className="text-xs">类型: {formattedResponseBody.type}</div>
+                      <div className="text-xs">大小: {formattedResponseBody.size}</div>
+                    </div>
+                  ) : null
+                ) : null}
+              </>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                <div className="text-xs italic">No response data</div>
+              </div>
+            )}
+          </div>
         </TabsContent>
       </Tabs>
     </div>
@@ -490,5 +500,40 @@ function MatchedEventItem({ event, isExpanded, onToggleExpand }: MatchedEventIte
       {/* 展开详情 */}
       {isExpanded && <EventDetailView event={event} />}
     </div>
+  )
+}
+
+function CopyButton({ content }: { content: string }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(content)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      console.error('Failed to copy:', err)
+    }
+  }
+
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={handleCopy}
+      className="h-6 px-2"
+    >
+      {copied ? (
+        <>
+          <Check className="w-3 h-3 mr-1" />
+          <span className="text-xs">Copied</span>
+        </>
+      ) : (
+        <>
+          <Copy className="w-3 h-3 mr-1" />
+          <span className="text-xs">Copy</span>
+        </>
+      )}
+    </Button>
   )
 }
