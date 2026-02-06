@@ -267,22 +267,22 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
                 {!collapsed.general && (
                   <div className="mt-2 ml-4 space-y-1.5 text-xs font-mono">
                     <div className="flex gap-2">
-                      <span className="text-muted-foreground min-w-[140px] shrink-0">Request URL:</span>
+                      <span className="text-muted-foreground min-w-[140px] shrink-0">{t('events.fields.requestUrl')}:</span>
                       <span className="break-all">{request.url}</span>
                     </div>
                     <div className="flex gap-2">
-                      <span className="text-muted-foreground min-w-[140px] shrink-0">Request Method:</span>
+                      <span className="text-muted-foreground min-w-[140px] shrink-0">{t('events.fields.requestMethod')}:</span>
                       <span>{request.method}</span>
                     </div>
                     {request.resourceType && (
                       <div className="flex gap-2">
-                        <span className="text-muted-foreground min-w-[140px] shrink-0">Resource Type:</span>
+                        <span className="text-muted-foreground min-w-[140px] shrink-0">{t('events.fields.resourceType')}:</span>
                         <span className="font-semibold text-blue-600 dark:text-blue-400">{request.resourceType}</span>
                       </div>
                     )}
                     {response && response.statusCode !== undefined && response.statusCode !== null && (
                       <div className="flex gap-2">
-                        <span className="text-muted-foreground min-w-[140px] shrink-0">Status Code:</span>
+                        <span className="text-muted-foreground min-w-[140px] shrink-0">{t('events.fields.statusCode')}:</span>
                         <span className={response.statusCode >= 400 ? 'text-red-500' : 'text-green-500 font-bold'}>
                           {response.statusCode}
                         </span>
@@ -290,13 +290,13 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
                     )}
                     {finalResult && (
                       <div className="flex gap-2">
-                        <span className="text-muted-foreground min-w-[140px] shrink-0">Final Result:</span>
+                        <span className="text-muted-foreground min-w-[140px] shrink-0">{t('events.fields.finalResult')}:</span>
                         <span className="font-bold">{FINAL_RESULT_LABELS[finalResult as FinalResultType] || finalResult}</span>
                       </div>
                     )}
                     {networkEvent.target && (
                       <div className="flex gap-2">
-                        <span className="text-muted-foreground min-w-[140px] shrink-0">Target ID:</span>
+                        <span className="text-muted-foreground min-w-[140px] shrink-0">{t('events.fields.targetId')}:</span>
                         <span className="text-muted-foreground truncate">{networkEvent.target}</span>
                       </div>
                     )}
@@ -322,7 +322,7 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
                         </div>
                       ))
                     ) : (
-                      <div className="text-muted-foreground italic">No data</div>
+                      <div className="text-muted-foreground italic">{t('events.common.noData')}</div>
                     )}
                   </div>
                 )}
@@ -346,7 +346,7 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
                         </div>
                       ))
                     ) : (
-                      <div className="text-muted-foreground italic">No data</div>
+                      <div className="text-muted-foreground italic">{t('events.common.noData')}</div>
                     )}
                   </div>
                 )}
@@ -388,7 +388,7 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
             {request.body ? (
               <>
                 <div className="flex items-center justify-between mb-2">
-                  <div className="text-[11px] font-bold text-muted-foreground uppercase">Request Payload</div>
+                  <div className="text-[11px] font-bold text-muted-foreground uppercase">{t('events.payload.title')}</div>
                   <CopyButton content={formattedRequestBody || ''} />
                 </div>
                 <ScrollArea className="h-[200px]">
@@ -399,7 +399,7 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
               </>
             ) : (
               <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                <div className="text-xs italic">No payload data</div>
+                <div className="text-xs italic">{t('events.payload.noData')}</div>
               </div>
             )}
           </div>
@@ -410,7 +410,7 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
             {response?.body ? (
               <>
                 <div className="flex items-center justify-between mb-2">
-                  <div className="text-[11px] font-bold text-muted-foreground uppercase">Response Body</div>
+                  <div className="text-[11px] font-bold text-muted-foreground uppercase">{t('events.response.title')}</div>
                   {formattedResponseBody && 'isPreviewable' in formattedResponseBody && formattedResponseBody.isPreviewable && formattedResponseBody.content && (
                     <CopyButton content={formattedResponseBody.content} />
                   )}
@@ -424,16 +424,16 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
                     </ScrollArea>
                   ) : !formattedResponseBody.isPreviewable ? (
                     <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                      <div className="text-sm mb-2">无法预览此类型文件</div>
-                      <div className="text-xs">类型: {formattedResponseBody.type}</div>
-                      <div className="text-xs">大小: {formattedResponseBody.size}</div>
+                      <div className="text-sm mb-2">{t('events.response.cannotPreview')}</div>
+                      <div className="text-xs">{t('events.response.type')}: {formattedResponseBody.type}</div>
+                      <div className="text-xs">{t('events.response.size')}: {formattedResponseBody.size}</div>
                     </div>
                   ) : null
                 ) : null}
               </>
             ) : (
               <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                <div className="text-xs italic">No response data</div>
+                <div className="text-xs italic">{t('events.response.noData')}</div>
               </div>
             )}
           </div>
@@ -504,6 +504,7 @@ function MatchedEventItem({ event, isExpanded, onToggleExpand }: MatchedEventIte
 }
 
 function CopyButton({ content }: { content: string }) {
+  const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
 
   const handleCopy = async () => {
@@ -526,12 +527,12 @@ function CopyButton({ content }: { content: string }) {
       {copied ? (
         <>
           <Check className="w-3 h-3 mr-1" />
-          <span className="text-xs">Copied</span>
+          <span className="text-xs">{t('events.common.copied')}</span>
         </>
       ) : (
         <>
           <Copy className="w-3 h-3 mr-1" />
-          <span className="text-xs">Copy</span>
+          <span className="text-xs">{t('events.common.copy')}</span>
         </>
       )}
     </Button>

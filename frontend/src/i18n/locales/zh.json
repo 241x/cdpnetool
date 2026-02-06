@@ -207,6 +207,30 @@
       "responseHeaders": "响应标头",
       "requestHeaders": "请求标头",
       "rules": "匹配规则"
+    },
+    "fields": {
+      "requestUrl": "请求 URL",
+      "requestMethod": "请求方法",
+      "resourceType": "资源类型",
+      "statusCode": "状态码",
+      "finalResult": "最终结果",
+      "targetId": "目标 ID"
+    },
+    "payload": {
+      "title": "请求负载",
+      "noData": "无负载数据"
+    },
+    "response": {
+      "title": "响应体",
+      "noData": "无响应数据",
+      "cannotPreview": "无法预览此类型文件",
+      "type": "类型",
+      "size": "大小"
+    },
+    "common": {
+      "noData": "无数据",
+      "copy": "复制",
+      "copied": "已复制"
     }
   },
   "network": {

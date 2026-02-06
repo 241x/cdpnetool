@@ -207,6 +207,30 @@
       "responseHeaders": "Response Headers",
       "requestHeaders": "Request Headers",
       "rules": "Matched Rules"
+    },
+    "fields": {
+      "requestUrl": "Request URL",
+      "requestMethod": "Request Method",
+      "resourceType": "Resource Type",
+      "statusCode": "Status Code",
+      "finalResult": "Final Result",
+      "targetId": "Target ID"
+    },
+    "payload": {
+      "title": "Request Payload",
+      "noData": "No payload data"
+    },
+    "response": {
+      "title": "Response Body",
+      "noData": "No response data",
+      "cannotPreview": "Cannot preview this file type",
+      "type": "Type",
+      "size": "Size"
+    },
+    "common": {
+      "noData": "No data",
+      "copy": "Copy",
+      "copied": "Copied"
     }
   },
   "network": {
