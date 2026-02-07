@@ -163,7 +163,7 @@ function App() {
     setLanguage(nextLang)
     toast({
       title: t('toolbar.toggleLanguage'),
-      description: nextLang === 'zh' ? '中文' : 'English',
+      description: t('common.languageName'),
     })
   }
 
@@ -185,7 +185,7 @@ function App() {
         if (!silent) {
           toast({ 
             variant: enabled ? 'success' : 'default',
-            title: enabled ? 'Start Capture' : 'Stop Capture',
+            title: enabled ? t('network.startCapture') : t('network.stopCapture'),
           })
         }
       } else {

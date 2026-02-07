@@ -22,7 +22,8 @@
     "rules": "Rule Config",
     "events": "Captured Records",
     "network": "Network",
-    "requestPreview": "Request Preview"
+    "requestPreview": "Request Preview",
+    "languageName": "English"
   },
   "toolbar": {
     "launchBrowser": "Launch Browser",
@@ -43,7 +44,8 @@
     "attach": "Attach",
     "attached": "Attached",
     "noTargets": "No targets found, click refresh to retry",
-    "connectFirst": "Please connect to browser first"
+    "connectFirst": "Please connect to browser first",
+    "untitled": "(Untitled)"
   },
   "rules": {
     "listTitle": "Configs",

@@ -22,7 +22,8 @@
     "rules": "规则配置",
     "events": "捕获记录",
     "network": "网络",
-    "requestPreview": "请求预览"
+    "requestPreview": "请求预览",
+    "languageName": "中文"
   },
   "toolbar": {
     "launchBrowser": "启动浏览器",
@@ -43,7 +44,8 @@
     "attach": "附加",
     "attached": "已附加",
     "noTargets": "没有找到页面目标，点击刷新按钮重试",
-    "connectFirst": "请先连接到浏览器"
+    "connectFirst": "请先连接到浏览器",
+    "untitled": "(无标题)"
   },
   "rules": {
     "listTitle": "配置列表",

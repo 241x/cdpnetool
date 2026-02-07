@@ -78,7 +78,7 @@ export function TargetsPanel({
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <div className="font-medium truncate">{target.title || '(无标题)'}</div>
+                  <div className="font-medium truncate">{target.title || t('targets.untitled')}</div>
                   <img 
                     src={faviconUrl} 
                     alt="" 
