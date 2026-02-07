@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { CopyButton } from '@/components/ui/copy-button'
 import { 
   Search, 
   X,
@@ -11,9 +12,7 @@ import {
   Square,
   ChevronDown,
   ChevronUp,
-  ChevronRight,
-  Copy,
-  Check
+  ChevronRight
 } from 'lucide-react'
 import type { NetworkEvent, Response as TrafficResponse, Request as TrafficRequest } from '@/types/events'
 import { useTranslation } from 'react-i18next'
@@ -421,41 +420,5 @@ function TrafficDetailView({ request, response }: { request: TrafficRequest, res
         </TabsContent>
       </Tabs>
     </div>
-  )
-}
-
-function CopyButton({ content }: { content: string }) {
-  const { t } = useTranslation()
-  const [copied, setCopied] = useState(false)
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(content)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch (err) {
-      console.error('Failed to copy:', err)
-    }
-  }
-
-  return (
-    <Button
-      variant="ghost"
-      size="sm"
-      onClick={handleCopy}
-      className="h-6 px-2"
-    >
-      {copied ? (
-        <>
-          <Check className="w-3 h-3 mr-1" />
-          <span className="text-xs">{t('events.common.copied')}</span>
-        </>
-      ) : (
-        <>
-          <Copy className="w-3 h-3 mr-1" />
-          <span className="text-xs">{t('events.common.copy')}</span>
-        </>
-      )}
-    </Button>
   )
 }

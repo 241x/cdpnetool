@@ -3,6 +3,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { CopyButton } from '@/components/ui/copy-button'
 import { 
   Search, 
   X,
@@ -10,9 +11,7 @@ import {
   ChevronRight,
   ChevronUp,
   Trash2,
-  Filter,
-  Copy,
-  Check
+  Filter
 } from 'lucide-react'
 import type { 
   MatchedEventWithId, 
@@ -499,41 +498,5 @@ function MatchedEventItem({ event, isExpanded, onToggleExpand }: MatchedEventIte
       {/* 展开详情 */}
       {isExpanded && <EventDetailView event={event} />}
     </div>
-  )
-}
-
-function CopyButton({ content }: { content: string }) {
-  const { t } = useTranslation()
-  const [copied, setCopied] = useState(false)
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(content)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch (err) {
-      console.error('Failed to copy:', err)
-    }
-  }
-
-  return (
-    <Button
-      variant="ghost"
-      size="sm"
-      onClick={handleCopy}
-      className="h-6 px-2"
-    >
-      {copied ? (
-        <>
-          <Check className="w-3 h-3 mr-1" />
-          <span className="text-xs">{t('events.common.copied')}</span>
-        </>
-      ) : (
-        <>
-          <Copy className="w-3 h-3 mr-1" />
-          <span className="text-xs">{t('events.common.copy')}</span>
-        </>
-      )}
-    </Button>
   )
 }
