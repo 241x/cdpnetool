@@ -28,8 +28,9 @@ func NewConfig() *Config {
 			Level  string   `yaml:"level"`
 			Writer []string `yaml:"writer"`
 		}{
-			Level:  "debug",
-			Writer: []string{"console", "file"},
+			Level: "debug",
+			// file需要在console之前，因为打包后浏览器控制台日志无法写入会影响文件日志
+			Writer: []string{"file", "console"},
 		},
 	}
 }

@@ -2,6 +2,8 @@ package processor
 
 import (
 	"context"
+	"net/url"
+	"strings"
 
 	"cdpnetool/internal/auditor"
 	"cdpnetool/internal/engine"
@@ -125,6 +127,11 @@ func (p *Processor) ProcessRequest(ctx context.Context, req *domain.Request) Res
 	}
 
 	if isModified {
+		// 重建 URL（如果 Query 参数被修改）
+		rebuildURLFromQuery(req)
+		// 重建 Cookie Header（如果 Cookies 被修改）
+		rebuildCookieHeader(req)
+
 		res.Action = ActionModify
 		res.ModifiedReq = req
 		p.log.Debug("[Processor] 请求已修改", "requestID", req.ID, "matchedCount", len(matched))
@@ -344,4 +351,50 @@ func (p *Processor) applyResponseAction(res *domain.Response, action rulespec.Ac
 // IsMatched 判断请求是否匹配了任何规则
 func (s *PendingState) IsMatched() bool {
 	return len(s.MatchedRules) > 0
+}
+
+// rebuildURLFromQuery 从 Query 字典重建 URL 的查询参数部分
+func rebuildURLFromQuery(req *domain.Request) {
+	if len(req.Query) == 0 {
+		// 如果 Query 为空，移除 URL 中的查询参数
+		if idx := strings.Index(req.URL, "?"); idx != -1 {
+			req.URL = req.URL[:idx]
+		}
+		return
+	}
+
+	// 解析基础 URL
+	parsedURL, err := url.Parse(req.URL)
+	if err != nil {
+		// 解析失败，保持原 URL 不变
+		return
+	}
+
+	// 从 Query 字典构建查询参数
+	query := url.Values{}
+	for k, v := range req.Query {
+		query.Set(k, v)
+	}
+
+	// 更新 URL 的查询参数
+	parsedURL.RawQuery = query.Encode()
+	req.URL = parsedURL.String()
+}
+
+// rebuildCookieHeader 从 Cookies 字典重建 Cookie Header
+func rebuildCookieHeader(req *domain.Request) {
+	if len(req.Cookies) == 0 {
+		// 如果 Cookies 为空，删除 Cookie Header
+		req.Headers.Del("Cookie")
+		return
+	}
+
+	// 构建 Cookie 字符串
+	var cookiePairs []string
+	for k, v := range req.Cookies {
+		cookiePairs = append(cookiePairs, k+"="+v)
+	}
+
+	// 设置 Cookie Header
+	req.Headers.Set("Cookie", strings.Join(cookiePairs, "; "))
 }
