@@ -257,7 +257,15 @@
     "BROWSER_NOT_RUNNING": "Browser is not running",
     "BROWSER_START_FAILED": "Failed to start browser, please check if Chrome or Edge is installed",
     "DATABASE_ERROR": "Database error, please restart the application",
-    "UNKNOWN_ERROR": "Unknown error"
+    "UNKNOWN_ERROR": "Unknown error",
+    "GET_SETTINGS_FAILED": "Failed to load settings",
+    "SAVE_SETTINGS_FAILED": "Failed to save settings",
+    "RESET_SETTINGS_FAILED": "Failed to reset settings",
+    "SELECT_FILE_FAILED": "Failed to select file",
+    "CANCELLED": "Cancelled",
+    "OPEN_DIRECTORY_FAILED": "Failed to open directory",
+    "GET_DATA_DIR_FAILED": "Failed to get data directory",
+    "GET_LOG_DIR_FAILED": "Failed to get log directory"
   },
   "settings": {
     "title": "Settings",

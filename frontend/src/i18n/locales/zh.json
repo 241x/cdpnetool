@@ -257,7 +257,15 @@
     "BROWSER_NOT_RUNNING": "浏览器未运行",
     "BROWSER_START_FAILED": "浏览器启动失败，请检查系统是否安装了 Chrome 或 Edge",
     "DATABASE_ERROR": "数据库错误，请重启应用",
-    "UNKNOWN_ERROR": "未知错误"
+    "UNKNOWN_ERROR": "未知错误",
+    "GET_SETTINGS_FAILED": "获取设置失败",
+    "SAVE_SETTINGS_FAILED": "保存设置失败",
+    "RESET_SETTINGS_FAILED": "恢复默认设置失败",
+    "SELECT_FILE_FAILED": "选择文件失败",
+    "CANCELLED": "用户取消",
+    "OPEN_DIRECTORY_FAILED": "打开目录失败",
+    "GET_DATA_DIR_FAILED": "获取数据目录失败",
+    "GET_LOG_DIR_FAILED": "获取日志目录失败"
   },
   "settings": {
     "title": "系统设置",

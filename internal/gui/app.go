@@ -237,10 +237,10 @@ func (a *App) BeforeClose(ctx context.Context) bool {
 
 	result, err := runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
 		Type:          runtime.QuestionDialog,
-		Title:         "提醒",
-		Message:       "当前有未保存的规则更改，确定要退出吗？",
-		DefaultButton: "否",
-		Buttons:       []string{"是", "否"},
+		Title:         "Warning",
+		Message:       "You have unsaved changes. Are you sure you want to exit?",
+		DefaultButton: "No",
+		Buttons:       []string{"Yes", "No"},
 	})
 
 	if err != nil {
@@ -249,14 +249,14 @@ func (a *App) BeforeClose(ctx context.Context) bool {
 	}
 
 	a.log.Debug("用户选择", "result", result)
-	return result == "否"
+	return result == "No"
 }
 
 // ExportConfig 弹出原生保存对话框导出配置
 func (a *App) ExportConfig(name, rulesJSON string) api.Response[api.EmptyData] {
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		DefaultFilename: name + ".json",
-		Title:           "导出配置",
+		Title:           "Export Configuration",
 		Filters: []runtime.FileFilter{
 			{DisplayName: "JSON Files (*.json)", Pattern: "*.json"},
 		},
@@ -742,7 +742,7 @@ func (a *App) GetSettings() api.Response[SettingsData] {
 	ctx := context.Background()
 	settings, err := a.settingsRepo.GetAllWithDefaults(ctx)
 	if err != nil {
-		return api.Fail[SettingsData]("GET_SETTINGS_FAILED", "获取设置失败")
+		return api.Fail[SettingsData]("GET_SETTINGS_FAILED", "")
 	}
 	return api.OK(SettingsData{Settings: settings})
 }
@@ -752,7 +752,7 @@ func (a *App) SaveSettings(settings map[string]string) api.Response[api.EmptyDat
 	ctx := context.Background()
 	err := a.settingsRepo.SetMultiple(ctx, settings)
 	if err != nil {
-		return api.Fail[api.EmptyData]("SAVE_SETTINGS_FAILED", "保存设置失败")
+		return api.Fail[api.EmptyData]("SAVE_SETTINGS_FAILED", "")
 	}
 	return api.OK(api.EmptyData{})
 }
@@ -771,7 +771,7 @@ func (a *App) ResetSettings() api.Response[SettingsData] {
 
 	err := a.settingsRepo.SetMultiple(ctx, settings)
 	if err != nil {
-		return api.Fail[SettingsData]("RESET_SETTINGS_FAILED", "恢复默认设置失败")
+		return api.Fail[SettingsData]("RESET_SETTINGS_FAILED", "")
 	}
 
 	return api.OK(SettingsData{Settings: settings})
@@ -780,20 +780,20 @@ func (a *App) ResetSettings() api.Response[SettingsData] {
 // SelectBrowserPath 打开系统文件选择器，选择浏览器可执行文件
 func (a *App) SelectBrowserPath() api.Response[SettingData] {
 	filePath, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "选择浏览器可执行文件",
+		Title: "Select Browser Executable",
 		Filters: []runtime.FileFilter{
-			{DisplayName: "可执行文件", Pattern: "*.exe"},
-			{DisplayName: "所有文件", Pattern: "*.*"},
+			{DisplayName: "Executable Files", Pattern: "*.exe"},
+			{DisplayName: "All Files", Pattern: "*.*"},
 		},
 	})
 
 	if err != nil {
-		return api.Fail[SettingData]("SELECT_FILE_FAILED", "选择文件失败")
+		return api.Fail[SettingData]("SELECT_FILE_FAILED", "")
 	}
 
 	// 用户取消选择
 	if filePath == "" {
-		return api.Fail[SettingData]("CANCELLED", "用户取消")
+		return api.Fail[SettingData]("CANCELLED", "")
 	}
 
 	return api.OK(SettingData{Value: filePath})
@@ -804,7 +804,7 @@ func (a *App) OpenDirectory(path string) api.Response[api.EmptyData] {
 	cmd := exec.Command("explorer", path)
 	err := cmd.Start()
 	if err != nil {
-		return api.Fail[api.EmptyData]("OPEN_DIRECTORY_FAILED", "打开目录失败")
+		return api.Fail[api.EmptyData]("OPEN_DIRECTORY_FAILED", "")
 	}
 	return api.OK(api.EmptyData{})
 }
@@ -813,7 +813,7 @@ func (a *App) OpenDirectory(path string) api.Response[api.EmptyData] {
 func (a *App) GetDataDirectory() api.Response[SettingData] {
 	dataDir, err := db.GetDefaultDir()
 	if err != nil {
-		return api.Fail[SettingData]("GET_DATA_DIR_FAILED", "获取数据目录失败")
+		return api.Fail[SettingData]("GET_DATA_DIR_FAILED", "")
 	}
 	return api.OK(SettingData{Value: dataDir})
 }
@@ -822,7 +822,7 @@ func (a *App) GetDataDirectory() api.Response[SettingData] {
 func (a *App) GetLogDirectory() api.Response[SettingData] {
 	logDir, err := logger.GetDefaultLogDir()
 	if err != nil {
-		return api.Fail[SettingData]("GET_LOG_DIR_FAILED", "获取日志目录失败")
+		return api.Fail[SettingData]("GET_LOG_DIR_FAILED", "")
 	}
 	return api.OK(SettingData{Value: logDir})
 }
