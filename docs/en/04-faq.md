@@ -130,6 +130,28 @@ If there is data in "Unmatched Requests", it means interception is working norma
 
 ---
 
+## Q: Cookie modification not working?
+
+**Possible Cause:**
+
+This may be a known limitation in Chromium. In older versions of Chrome/Chromium, the CDP (Chrome DevTools Protocol) `Fetch.continueRequest` method cannot modify the Cookie Header.
+
+**Solutions:**
+
+1. **Upgrade Browser Version**:
+   - This issue has been fixed in newer versions ([Chromium Commit #7077239](https://chromium-review.googlesource.com/c/chromium/src/+/7077239))
+   - Recommend using Chrome 145+ or newer stable versions
+
+2. **Use Canary Version** (for testing latest features):
+   - Download [Chrome Canary](https://www.google.com/chrome/canary/)
+   - Or download [Chrome Dev](https://www.google.com/chrome/dev/)
+
+3. **Verify Fix**:
+   - Enter `chrome://version/` in browser address bar to check version number
+   - If version >= 145, Cookie modification should work normally
+
+---
+
 ## Q: How to use on macOS or Linux?
 
 **Current Status:**

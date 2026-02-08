@@ -141,7 +141,7 @@ func (e *Engine) evalCondition(req *domain.Request, c *rulespec.Condition) bool 
 	case rulespec.ConditionResourceType:
 		// 直接比较 ResourceType（已经是规范化的小写字符串）
 		for _, v := range c.Values {
-			if string(req.ResourceType) == strings.ToLower(v) {
+			if string(req.ResourceType) == v {
 				return true
 			}
 		}
@@ -159,35 +159,35 @@ func (e *Engine) evalCondition(req *domain.Request, c *rulespec.Condition) bool 
 		return e.matchRegex(req.Headers.Get(c.Name), c.Pattern)
 
 	case rulespec.ConditionQueryExists:
-		_, ok := req.Query[strings.ToLower(c.Name)]
+		_, ok := req.Query[c.Name]
 		return ok
 	case rulespec.ConditionQueryNotExists:
-		_, ok := req.Query[strings.ToLower(c.Name)]
+		_, ok := req.Query[c.Name]
 		return !ok
 	case rulespec.ConditionQueryEquals:
-		v, ok := req.Query[strings.ToLower(c.Name)]
+		v, ok := req.Query[c.Name]
 		return ok && v == c.Value
 	case rulespec.ConditionQueryContains:
-		v, ok := req.Query[strings.ToLower(c.Name)]
+		v, ok := req.Query[c.Name]
 		return ok && strings.Contains(v, c.Value)
 	case rulespec.ConditionQueryRegex:
-		v, ok := req.Query[strings.ToLower(c.Name)]
+		v, ok := req.Query[c.Name]
 		return ok && e.matchRegex(v, c.Pattern)
 
 	case rulespec.ConditionCookieExists:
-		_, ok := req.Cookies[strings.ToLower(c.Name)]
+		_, ok := req.Cookies[c.Name]
 		return ok
 	case rulespec.ConditionCookieNotExists:
-		_, ok := req.Cookies[strings.ToLower(c.Name)]
+		_, ok := req.Cookies[c.Name]
 		return !ok
 	case rulespec.ConditionCookieEquals:
-		v, ok := req.Cookies[strings.ToLower(c.Name)]
+		v, ok := req.Cookies[c.Name]
 		return ok && v == c.Value
 	case rulespec.ConditionCookieContains:
-		v, ok := req.Cookies[strings.ToLower(c.Name)]
+		v, ok := req.Cookies[c.Name]
 		return ok && strings.Contains(v, c.Value)
 	case rulespec.ConditionCookieRegex:
-		v, ok := req.Cookies[strings.ToLower(c.Name)]
+		v, ok := req.Cookies[c.Name]
 		return ok && e.matchRegex(v, c.Pattern)
 
 	case rulespec.ConditionBodyContains:

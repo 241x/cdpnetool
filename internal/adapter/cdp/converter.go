@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	"cdpnetool/internal/transformer"
 	"cdpnetool/pkg/domain"
 
 	"github.com/mafredri/cdp/protocol/fetch"
@@ -37,21 +38,14 @@ func ToNeutralRequest(ev *fetch.RequestPausedReply) *domain.Request {
 		if queryStr != "" {
 			for _, pair := range strings.Split(queryStr, "&") {
 				if kv := strings.SplitN(pair, "=", 2); len(kv) == 2 {
-					req.Query[strings.ToLower(kv[0])] = kv[1]
+					req.Query[kv[0]] = kv[1]
 				}
 			}
 		}
 	}
 
 	// 解析 Cookie
-	if cookieHeader := req.Headers.Get("cookie"); cookieHeader != "" {
-		for _, pair := range strings.Split(cookieHeader, ";") {
-			pair = strings.TrimSpace(pair)
-			if kv := strings.SplitN(pair, "=", 2); len(kv) == 2 {
-				req.Cookies[strings.ToLower(kv[0])] = kv[1]
-			}
-		}
-	}
+	req.Cookies = transformer.ParseCookies(req.Headers.Get("Cookie"))
 
 	// 处理请求体：优先使用 PostDataEntries（支持大数据），回退到 PostData（已废弃）
 	if len(ev.Request.PostDataEntries) > 0 {

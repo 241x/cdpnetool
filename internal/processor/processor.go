@@ -130,7 +130,11 @@ func (p *Processor) ProcessRequest(ctx context.Context, req *domain.Request) Res
 		// 重建 URL（如果 Query 参数被修改）
 		rebuildURLFromQuery(req)
 		// 重建 Cookie Header（如果 Cookies 被修改）
-		rebuildCookieHeader(req)
+		if cookieStr := transformer.BuildCookieString(req.Cookies); cookieStr != "" {
+			req.Headers.Set("Cookie", cookieStr)
+		} else {
+			req.Headers.Del("Cookie")
+		}
 
 		res.Action = ActionModify
 		res.ModifiedReq = req
@@ -379,22 +383,4 @@ func rebuildURLFromQuery(req *domain.Request) {
 	// 更新 URL 的查询参数
 	parsedURL.RawQuery = query.Encode()
 	req.URL = parsedURL.String()
-}
-
-// rebuildCookieHeader 从 Cookies 字典重建 Cookie Header
-func rebuildCookieHeader(req *domain.Request) {
-	if len(req.Cookies) == 0 {
-		// 如果 Cookies 为空，删除 Cookie Header
-		req.Headers.Del("Cookie")
-		return
-	}
-
-	// 构建 Cookie 字符串
-	var cookiePairs []string
-	for k, v := range req.Cookies {
-		cookiePairs = append(cookiePairs, k+"="+v)
-	}
-
-	// 设置 Cookie Header
-	req.Headers.Set("Cookie", strings.Join(cookiePairs, "; "))
 }

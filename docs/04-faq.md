@@ -130,6 +130,28 @@
 
 ---
 
+## Q: 修改 Cookie 不生效？
+
+**可能原因：**
+
+这可能是 Chromium 的已知限制。在较旧版本的 Chrome/Chromium 中，CDP（Chrome DevTools Protocol）的 `Fetch.continueRequest` 方法无法修改 Cookie Header。
+
+**解决方法：**
+
+1. **升级浏览器版本**：
+   - 该问题已在新版本中修复（[Chromium 提交 #7077239](https://chromium-review.googlesource.com/c/chromium/src/+/7077239)）
+   - 建议使用 Chrome 145+ 或更新的稳定版本
+
+2. **使用金丝雀版本**（用于测试最新功能）：
+   - 下载 [Chrome Canary](https://www.google.com/chrome/canary/)
+   - 或下载 [Chrome Dev](https://www.google.com/chrome/dev/)
+
+3. **验证修复**：
+   - 在浏览器地址栏输入 `chrome://version/` 查看版本号
+   - 如果版本号 >= 146，Cookie 修改功能应该可以正常工作
+
+---
+
 ## Q: macOS 或 Linux 如何使用？
 
 **当前状态：**

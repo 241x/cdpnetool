@@ -59,22 +59,22 @@ type TargetInfo struct {
 // Header 封装通用的头部操作
 type Header map[string]string
 
-// Get 获取指定 Header 的值（大小写不敏感）
+// Get 获取指定 Header 的值
 func (h Header) Get(key string) string {
 	if h == nil {
 		return ""
 	}
-	return h[strings.ToLower(key)]
+	return h[key]
 }
 
-// Set 设置指定 Header 的值（自动转换为小写）
+// Set 设置指定 Header 的值
 func (h Header) Set(key, value string) {
-	h[strings.ToLower(key)] = value
+	h[key] = value
 }
 
 // Del 删除指定 Header
 func (h Header) Del(key string) {
-	delete(h, strings.ToLower(key))
+	delete(h, key)
 }
 
 // Request 请求模型
