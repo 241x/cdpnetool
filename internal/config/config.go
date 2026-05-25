@@ -16,7 +16,7 @@ type Config struct {
 // NewConfig 创建默认配置
 func NewConfig() *Config {
 	return &Config{
-		Version: "1.2.1",
+		Version: "1.2.2",
 		Sqlite: struct {
 			Db     string `yaml:"db"`
 			Prefix string `yaml:"prefix"`
