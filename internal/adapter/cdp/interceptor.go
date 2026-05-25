@@ -92,6 +92,17 @@ func (i *Interceptor) Consume(ctx context.Context, client *cdp.Client, handler f
 
 		if i.pool != nil {
 			submitted := i.pool.Submit(func() {
+				defer func() {
+					if r := recover(); r != nil {
+						i.log.Err(nil, "handler panic 捕获", "requestID", ev.RequestID, "panic", r)
+						// 尝试降级放行
+						if ev.ResponseStatusCode == nil {
+							_ = i.ContinueRequest(ctx, client, ev.RequestID)
+						} else {
+							_ = i.ContinueResponse(ctx, client, ev.RequestID)
+						}
+					}
+				}()
 				handler(ev)
 			})
 			if !submitted {
