@@ -51,7 +51,7 @@ func TestProcessRequest_NoMatch(t *testing.T) {
 		Method: "GET",
 	}
 
-	result := p.ProcessRequest(context.Background(), req)
+	result := p.ProcessRequest(context.Background(), "test-session", "test-target", req)
 	if result.Action != processor.ActionPass {
 		t.Errorf("got action %v, want %v", result.Action, processor.ActionPass)
 	}
@@ -94,7 +94,7 @@ func TestProcessRequest_Block(t *testing.T) {
 		Method: "GET",
 	}
 
-	result := p.ProcessRequest(context.Background(), req)
+	result := p.ProcessRequest(context.Background(), "test-session", "test-target", req)
 	if result.Action != processor.ActionBlock {
 		t.Errorf("got action %v, want %v", result.Action, processor.ActionBlock)
 	}
@@ -143,7 +143,7 @@ func TestProcessRequest_ModifyHeader(t *testing.T) {
 		Headers: make(domain.Header),
 	}
 
-	result := p.ProcessRequest(context.Background(), req)
+	result := p.ProcessRequest(context.Background(), "test-session", "test-target", req)
 	if result.Action != processor.ActionModify {
 		t.Errorf("got action %v, want %v", result.Action, processor.ActionModify)
 	}
@@ -191,7 +191,7 @@ func TestProcessRequest_ModifyURL(t *testing.T) {
 		Method: "GET",
 	}
 
-	result := p.ProcessRequest(context.Background(), req)
+	result := p.ProcessRequest(context.Background(), "test-session", "test-target", req)
 	if result.Action != processor.ActionModify {
 		t.Errorf("got action %v, want %v", result.Action, processor.ActionModify)
 	}
@@ -213,7 +213,7 @@ func TestProcessResponse_NoMatch(t *testing.T) {
 	trafficAud := auditor.New(trafficChan, logger.NewNop())
 	p := processor.New(tr, eng, matchedAud, trafficAud, logger.NewNop())
 
-	result := p.ProcessResponse(context.Background(), "req1", &domain.Response{})
+	result := p.ProcessResponse(context.Background(), "test-session", "test-target", "req1", &domain.Response{})
 	if result.Action != processor.ActionPass {
 		t.Errorf("got action %v, want %v", result.Action, processor.ActionPass)
 	}
@@ -267,7 +267,7 @@ func TestProcessResponse_ModifyStatus(t *testing.T) {
 		Headers:    make(domain.Header),
 	}
 
-	result := p.ProcessResponse(context.Background(), "req1", res)
+	result := p.ProcessResponse(context.Background(), "test-session", "test-target", "req1", res)
 	if result.Action != processor.ActionModify {
 		t.Errorf("got action %v, want %v", result.Action, processor.ActionModify)
 	}
@@ -323,7 +323,7 @@ func TestProcessResponse_ModifyHeader(t *testing.T) {
 		Headers:    make(domain.Header),
 	}
 
-	result := p.ProcessResponse(context.Background(), "req1", res)
+	result := p.ProcessResponse(context.Background(), "test-session", "test-target", "req1", res)
 	if result.Action != processor.ActionModify {
 		t.Errorf("got action %v, want %v", result.Action, processor.ActionModify)
 	}

@@ -44,8 +44,6 @@ type Processor struct {
 	matchedAuditor *auditor.Auditor // 匹配事件审计器
 	trafficAuditor *auditor.Auditor // 全量流量审计器
 	log            logger.Logger
-	sessionID      string // 会话ID
-	targetID       string // 目标ID
 }
 
 // New 创建一个新的处理器
@@ -62,14 +60,8 @@ func New(t *tracker.Tracker, e *engine.Engine, matchedAud, trafficAud *auditor.A
 	}
 }
 
-// SetContext 设置会话和目标上下文
-func (p *Processor) SetContext(sessionID, targetID string) {
-	p.sessionID = sessionID
-	p.targetID = targetID
-}
-
 // ProcessRequest 处理请求阶段逻辑
-func (p *Processor) ProcessRequest(ctx context.Context, req *domain.Request) Result {
+func (p *Processor) ProcessRequest(ctx context.Context, sessionID, targetID string, req *domain.Request) Result {
 	p.log.Debug("[Processor] 开始处理请求", "requestID", req.ID, "url", req.URL, "method", req.Method)
 
 	matched := p.engine.Eval(req, rulespec.StageRequest)
@@ -112,10 +104,10 @@ func (p *Processor) ProcessRequest(ctx context.Context, req *domain.Request) Res
 
 				// Block 动作需立即记录审计（响应阶段不会再执行）
 				// 1. 全量流量审计
-				p.trafficAuditor.Record(p.sessionID, p.targetID, req, res.MockRes, "blocked", p.toRuleMatches(matched))
+				p.trafficAuditor.Record(sessionID, targetID, req, res.MockRes, "blocked", p.toRuleMatches(matched))
 				// 2. 匹配事件审计（仅匹配时记录）
 				if len(matched) > 0 {
-					p.matchedAuditor.Record(p.sessionID, p.targetID, req, res.MockRes, "blocked", p.toRuleMatches(matched))
+					p.matchedAuditor.Record(sessionID, targetID, req, res.MockRes, "blocked", p.toRuleMatches(matched))
 				}
 				p.log.Debug("[Processor] Block 执行完成", "requestID", req.ID)
 				return res
@@ -152,7 +144,7 @@ func (p *Processor) ProcessRequest(ctx context.Context, req *domain.Request) Res
 }
 
 // ProcessResponse 处理响应阶段逻辑
-func (p *Processor) ProcessResponse(ctx context.Context, reqID string, res *domain.Response) Result {
+func (p *Processor) ProcessResponse(ctx context.Context, sessionID, targetID, reqID string, res *domain.Response) Result {
 	p.log.Debug("[Processor] 开始处理响应", "requestID", reqID, "statusCode", res.StatusCode)
 
 	stateVal, ok := p.tracker.Get(reqID)
@@ -195,10 +187,10 @@ func (p *Processor) ProcessResponse(ctx context.Context, reqID string, res *doma
 	ruleMatches := p.toRuleMatches(allMatched)
 
 	// 1. 全量流量审计
-	p.trafficAuditor.Record(p.sessionID, p.targetID, state.Request, res, finalResult, ruleMatches)
+	p.trafficAuditor.Record(sessionID, targetID, state.Request, res, finalResult, ruleMatches)
 	// 2. 匹配事件审计（仅匹配时记录）
 	if len(allMatched) > 0 {
-		p.matchedAuditor.Record(p.sessionID, p.targetID, state.Request, res, finalResult, ruleMatches)
+		p.matchedAuditor.Record(sessionID, targetID, state.Request, res, finalResult, ruleMatches)
 	}
 	p.log.Debug("[Processor] 响应处理完成", "requestID", reqID, "finalResult", finalResult)
 

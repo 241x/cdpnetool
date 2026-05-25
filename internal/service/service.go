@@ -335,13 +335,10 @@ func (o *Orchestrator) handleEvent(state *sessionState, ts *cdp.TargetSession, e
 	}
 	o.log.Debug("[Orchestrator] 处理 CDP 事件", "requestID", ev.RequestID, "stage", stage, "url", ev.Request.URL, "method", ev.Request.Method)
 
-	// 设置上下文
-	state.processor.SetContext(string(state.id), string(ts.ID))
-
 	if ev.ResponseStatusCode == nil {
 		// 请求阶段
 		req := cdp.ToNeutralRequest(ev)
-		res := state.processor.ProcessRequest(state.ctx, req)
+		res := state.processor.ProcessRequest(state.ctx, string(state.id), string(ts.ID), req)
 		o.log.Debug("[Orchestrator] 请求处理结果", "requestID", ev.RequestID, "action", res.Action)
 		o.applyResult(state, ts, ev, res)
 	} else {
@@ -374,7 +371,7 @@ func (o *Orchestrator) handleEvent(state *sessionState, ts *cdp.TargetSession, e
 		}
 
 		resp := cdp.ToNeutralResponse(ev, body)
-		res := state.processor.ProcessResponse(state.ctx, string(ev.RequestID), resp)
+		res := state.processor.ProcessResponse(state.ctx, string(state.id), string(ts.ID), string(ev.RequestID), resp)
 		o.log.Debug("[Orchestrator] 响应处理结果", "requestID", ev.RequestID, "action", res.Action)
 		o.applyResult(state, ts, ev, res)
 	}
@@ -407,7 +404,12 @@ func (o *Orchestrator) applyResult(state *sessionState, ts *cdp.TargetSession, e
 			Body:            res.MockRes.Body,
 		})
 		if err != nil {
-			o.log.Err(err, "[Orchestrator] 执行 Block 响应失败", "requestID", id)
+			o.log.Err(err, "[Orchestrator] 执行 Block 响应失败，降级放行", "requestID", id)
+			if isRequest {
+				_ = state.interceptor.ContinueRequest(state.ctx, ts.Client, id)
+			} else {
+				_ = state.interceptor.ContinueResponse(state.ctx, ts.Client, id)
+			}
 		} else {
 			o.log.Debug("[Orchestrator] Block 执行成功", "requestID", id)
 		}
@@ -424,7 +426,8 @@ func (o *Orchestrator) applyResult(state *sessionState, ts *cdp.TargetSession, e
 				PostData:  res.ModifiedReq.Body,
 			})
 			if err != nil {
-				o.log.Err(err, "[Orchestrator] 执行请求修改失败", "requestID", id)
+				o.log.Err(err, "[Orchestrator] 执行请求修改失败，降级原样放行", "requestID", id)
+				_ = state.interceptor.ContinueRequest(state.ctx, ts.Client, id)
 			} else {
 				o.log.Debug("[Orchestrator] 请求修改成功", "requestID", id)
 			}
